@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Car {
+  id          String   @id @default(uuid())
+  make        String
+  model       String
+  year        Int
+  price       Int
+  imageUrl    String
+  description String
+}
+
+enum Sender {
+  USER_A
+  USER_B
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  sender    Sender
+  content   String
+  createdAt DateTime @default(now())
+}
