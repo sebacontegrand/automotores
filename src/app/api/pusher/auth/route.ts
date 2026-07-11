@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { pusherServer } from "@/lib/pusher";
-import { cookies } from "next/headers";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const session = cookies().get("autovault_session");
+    const session = req.cookies.get("autovault_session");
     if (!session || session.value !== "full") {
       return new NextResponse("Unauthorized", { status: 401 });
     }
