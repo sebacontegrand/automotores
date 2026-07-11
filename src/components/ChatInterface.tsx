@@ -58,7 +58,10 @@ export function ChatInterface({ initialMessages }: { initialMessages: Message[] 
     
     privateChannel.bind("new-message", (message: Message) => {
       if (!isExpired(message)) {
-        setMessages((prev) => [...prev, message]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, message];
+        });
       }
     });
 
@@ -88,15 +91,37 @@ export function ChatInterface({ initialMessages }: { initialMessages: Message[] 
     e.preventDefault();
     if (!input.trim() || !currentUser) return;
 
-    const messageData = { sender: currentUser, content: input };
+    const content = input;
     setInput("");
 
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      sender: currentUser,
+      content,
+      createdAt: new Date(),
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+
     try {
-      await fetch("/api/messages", {
+      const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(messageData),
+        body: JSON.stringify({ sender: currentUser, content }),
       });
+      if (res.ok) {
+        const serverMsg = await res.json();
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === serverMsg.id)) {
+            return prev.filter((m) => m.id !== tempId);
+          }
+          return prev.map((m) =>
+            m.id === tempId
+              ? { ...serverMsg, createdAt: new Date(serverMsg.createdAt) }
+              : m
+          );
+        });
+      }
     } catch (err) {
       console.error("Failed to send message", err);
     }
