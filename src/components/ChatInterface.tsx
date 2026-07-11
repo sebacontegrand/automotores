@@ -7,6 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, UserCircle, LogOut } from "lucide-react";
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+function isExpired(msg: Message): boolean {
+  return Date.now() - new Date(msg.createdAt).getTime() > FIVE_MINUTES_MS;
+}
+
+function filterExpired(msgs: Message[]): Message[] {
+  return msgs.filter((m) => !isExpired(m));
+}
+
 export type Message = {
   id: string;
   sender: "USER_A" | "USER_B";
@@ -16,7 +26,7 @@ export type Message = {
 
 export function ChatInterface({ initialMessages }: { initialMessages: Message[] }) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>(filterExpired(initialMessages));
   const [input, setInput] = useState("");
   const [currentUser, setCurrentUser] = useState<"USER_A" | "USER_B" | null>(null);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
@@ -47,7 +57,9 @@ export function ChatInterface({ initialMessages }: { initialMessages: Message[] 
     const privateChannel = pusherClient.subscribe("private-chat");
     
     privateChannel.bind("new-message", (message: Message) => {
-      setMessages((prev) => [...prev, message]);
+      if (!isExpired(message)) {
+        setMessages((prev) => [...prev, message]);
+      }
     });
 
     return () => {
@@ -55,6 +67,13 @@ export function ChatInterface({ initialMessages }: { initialMessages: Message[] 
       pusherClient.unsubscribe("private-chat");
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessages((prev) => filterExpired(prev));
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

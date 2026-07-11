@@ -15,6 +15,11 @@ export default async function ChatPage() {
   let initialMessages: Message[] = [];
   try {
     initialMessages = await prisma.message.findMany({
+      where: {
+        createdAt: {
+          gte: new Date(Date.now() - 5 * 60 * 1000)
+        }
+      },
       orderBy: { createdAt: 'asc' }
     });
   } catch (e) {
