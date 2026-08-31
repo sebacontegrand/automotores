@@ -27,3 +27,11 @@ model Message {
   content   String
   createdAt DateTime @default(now())
 }
+
+model DelayedMessage {
+  id        String   @id @default(uuid())
+  sender    Sender
+  content   String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
