@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
 export async function DELETE() {
+  try {
+    await prisma.message.deleteMany();
+  } catch (e) {
+    console.warn("Failed to delete live messages on session end", e);
+  }
+
   cookies().set("autovault_session", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
