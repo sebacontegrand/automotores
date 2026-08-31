@@ -1,18 +1,17 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { pusherServer } from "@/lib/pusher";
 import { prisma } from "@/lib/prisma";
 
 const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 
-function checkAuth(): boolean {
-  const session = cookies().get("autovault_session");
+function checkAuth(req: NextRequest): boolean {
+  const session = req.cookies.get("autovault_session");
   return session?.value === "full";
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    if (!checkAuth()) {
+    if (!checkAuth(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -37,9 +36,9 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    if (!checkAuth()) {
+    if (!checkAuth(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -65,9 +64,9 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   try {
-    if (!checkAuth()) {
+    if (!checkAuth(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -97,9 +96,9 @@ export async function PATCH(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
   try {
-    if (!checkAuth()) {
+    if (!checkAuth(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

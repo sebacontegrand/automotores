@@ -1,15 +1,14 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { pusherServer } from "@/lib/pusher";
 
-function checkAuth(): boolean {
-  const session = cookies().get("autovault_session");
+function checkAuth(req: NextRequest): boolean {
+  const session = req.cookies.get("autovault_session");
   return session?.value === "full";
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    if (!checkAuth()) {
+    if (!checkAuth(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
