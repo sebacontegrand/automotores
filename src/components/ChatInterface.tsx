@@ -102,6 +102,17 @@ export function ChatInterface({
     }
   }, [initialDelayedMessages]);
 
+  useEffect(() => {
+    fetch("/api/delayed-messages")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: DelayedMessage[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDelayedMessages(filterExpiredDelayed(data));
+        }
+      })
+      .catch((err) => console.error("Failed fetching delayed messages on mount", err));
+  }, []);
+
   const sendTypingSignal = (isTyping: boolean) => {
     if (!currentUser) return;
     const now = Date.now();

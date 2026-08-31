@@ -55,7 +55,11 @@ export async function POST(req: NextRequest) {
       data: { sender, content, expiresAt },
     });
 
-    await pusherServer.trigger("private-chat", "new-delayed-message", message);
+    try {
+      await pusherServer.trigger("private-chat", "new-delayed-message", message);
+    } catch (e) {
+      console.warn("Pusher trigger failed on new-delayed-message:", e);
+    }
 
     return NextResponse.json(message);
   } catch (error) {
@@ -87,7 +91,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
-    await pusherServer.trigger("private-chat", "update-delayed-message", message);
+    try {
+      await pusherServer.trigger("private-chat", "update-delayed-message", message);
+    } catch (e) {
+      console.warn("Pusher trigger failed on update-delayed-message:", e);
+    }
 
     return NextResponse.json(message);
   } catch (error) {
@@ -116,7 +124,11 @@ export async function DELETE(req: NextRequest) {
       console.warn("Prisma failed deleting delayed message", e);
     }
 
-    await pusherServer.trigger("private-chat", "delete-delayed-message", { id });
+    try {
+      await pusherServer.trigger("private-chat", "delete-delayed-message", { id });
+    } catch (e) {
+      console.warn("Pusher trigger failed on delete-delayed-message:", e);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
