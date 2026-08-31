@@ -60,9 +60,9 @@ export function ChatInterface({
 
   useEffect(() => {
     fetch("/api/delayed-messages")
-      .then((res) => (res.ok ? res.json() : []))
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setDelayedMessages(filterExpiredDelayed(data));
         }
       })
@@ -268,9 +268,13 @@ export function ChatInterface({
               : m
           );
         });
+      } else {
+        console.error("Server returned non-OK status sending delayed message", res.status);
+        setDelayedMessages((prev) => prev.filter((m) => m.id !== tempId));
       }
     } catch (err) {
       console.error("Failed to send delayed message", err);
+      setDelayedMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
   };
 

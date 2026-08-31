@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { pusherServer } from "@/lib/pusher";
 import { prisma } from "@/lib/prisma";
 
 const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 
-function checkAuth(req: Request): boolean {
-  const session = req.headers.get("cookie")?.match(/autovault_session=([^;]+)/)?.[1];
-  return session === "full";
+function checkAuth(): boolean {
+  const session = cookies().get("autovault_session");
+  return session?.value === "full";
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    if (!checkAuth(req)) {
+    if (!checkAuth()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    if (!checkAuth(req)) {
+    if (!checkAuth()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -51,34 +52,22 @@ export async function POST(req: Request) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + FIVE_DAYS_MS);
 
-    let message;
-    try {
-      message = await prisma.delayedMessage.create({
-        data: { sender, content, expiresAt },
-      });
-    } catch (e) {
-      console.warn("Prisma failed, creating fake delayed message to broadcast", e);
-      message = {
-        id: Math.random().toString(),
-        sender,
-        content,
-        createdAt: now,
-        expiresAt,
-      };
-    }
+    const message = await prisma.delayedMessage.create({
+      data: { sender, content, expiresAt },
+    });
 
     await pusherServer.trigger("private-chat", "new-delayed-message", message);
 
     return NextResponse.json(message);
   } catch (error) {
     console.error("Delayed messages POST error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to persist delayed message" }, { status: 500 });
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    if (!checkAuth(req)) {
+    if (!checkAuth()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -110,7 +99,7 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    if (!checkAuth(req)) {
+    if (!checkAuth()) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
