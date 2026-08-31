@@ -107,19 +107,24 @@ export function ChatInterface({
   useEffect(() => {
     const presenceChannel = pusherClient.subscribe("presence-autovault");
     
-    presenceChannel.bind("pusher:subscription_succeeded", (members: { count: number; myID: string; members: Record<string, { user_id: string }> }) => {
-      const count = members.count;
-      const myId = members.myID;
-      const otherExists = members.members && Object.values(members.members).some((m) => m.user_id !== myId);
-      setOtherUserOnline(count >= 2 || Boolean(otherExists));
+    presenceChannel.bind("pusher:subscription_succeeded", (members: { members: Record<string, { user_id: string }> }) => {
+      const partnerRole = currentUserRef.current === "USER_A" ? "USER_B" : "USER_A";
+      const isPartnerConnected = Boolean(members.members && members.members[partnerRole]);
+      setOtherUserOnline(isPartnerConnected);
     });
     
-    presenceChannel.bind("pusher:member_added", () => {
-      setOtherUserOnline(true);
+    presenceChannel.bind("pusher:member_added", (member: { id: string }) => {
+      const partnerRole = currentUserRef.current === "USER_A" ? "USER_B" : "USER_A";
+      if (member.id === partnerRole) {
+        setOtherUserOnline(true);
+      }
     });
     
-    presenceChannel.bind("pusher:member_removed", () => {
-      setOtherUserOnline(false);
+    presenceChannel.bind("pusher:member_removed", (member: { id: string }) => {
+      const partnerRole = currentUserRef.current === "USER_A" ? "USER_B" : "USER_A";
+      if (member.id === partnerRole) {
+        setOtherUserOnline(false);
+      }
     });
 
     const privateChannel = pusherClient.subscribe("private-chat");
