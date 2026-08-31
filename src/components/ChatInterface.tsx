@@ -71,11 +71,36 @@ export function ChatInterface({
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingSentRef = useRef<number>(0);
-  const [activeTab, setActiveTab] = useState<Tab>("live");
+  const [activeTab, setActiveTab] = useState<Tab>(
+    initialDelayedMessages.length > 0 && filterExpired(initialMessages).length === 0 ? "delayed" : "live"
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const liveEndRef = useRef<HTMLDivElement>(null);
   const delayedEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("autovault_user_identity") : null;
+    if (saved === "USER_A" || saved === "USER_B") {
+      setCurrentUser(saved);
+      return;
+    }
+
+    if (initialDelayedMessages.length > 0) {
+      const lastSender = initialDelayedMessages[initialDelayedMessages.length - 1].sender;
+      const assigned = lastSender === "USER_A" ? "USER_B" : "USER_A";
+      setCurrentUser(assigned);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("autovault_user_identity", assigned);
+      }
+      return;
+    }
+
+    setCurrentUser("USER_A");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("autovault_user_identity", "USER_A");
+    }
+  }, [initialDelayedMessages]);
 
   const sendTypingSignal = (isTyping: boolean) => {
     if (!currentUser) return;
@@ -96,20 +121,16 @@ export function ChatInterface({
     presenceChannel.bind("pusher:subscription_succeeded", (members: { count: number; myID: string; members: Record<string, { user_id: string }> }) => {
       const count = members.count;
       const myId = members.myID;
-      
-      if (count === 1) {
-        setCurrentUser("USER_A");
-        setOtherUserOnline(false);
-      } else if (count >= 2) {
-        const otherUserExists = members.members && Object.values(members.members).some(
-          (m) => m.user_id !== myId
-        );
-        if (otherUserExists) {
+      const otherExists = members.members && Object.values(members.members).some((m) => m.user_id !== myId);
+      setOtherUserOnline(count >= 2 || Boolean(otherExists));
+
+      if (!currentUserRef.current) {
+        if (otherExists) {
           setCurrentUser("USER_B");
-          setOtherUserOnline(true);
+          if (typeof window !== "undefined") localStorage.setItem("autovault_user_identity", "USER_B");
         } else {
           setCurrentUser("USER_A");
-          setOtherUserOnline(false);
+          if (typeof window !== "undefined") localStorage.setItem("autovault_user_identity", "USER_A");
         }
       }
     });
@@ -335,6 +356,19 @@ export function ChatInterface({
         <div className="flex items-center space-x-2">
           <UserCircle className="w-5 h-5 text-slate-400" />
           <span className="text-slate-300 font-medium">Identity: {currentUser}</span>
+          <button
+            onClick={() => {
+              const nextUser = currentUser === "USER_A" ? "USER_B" : "USER_A";
+              setCurrentUser(nextUser);
+              if (typeof window !== "undefined") {
+                localStorage.setItem("autovault_user_identity", nextUser);
+              }
+            }}
+            className="text-[11px] text-blue-400 hover:text-blue-300 underline ml-2 transition-colors"
+            title="Switch identity between USER_A and USER_B"
+          >
+            Switch to {currentUser === "USER_A" ? "USER_B" : "USER_A"}
+          </button>
         </div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
