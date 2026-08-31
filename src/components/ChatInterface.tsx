@@ -106,7 +106,7 @@ export function ChatInterface({
     fetch("/api/delayed-messages")
       .then((res) => (res.ok ? res.json() : []))
       .then((data: DelayedMessage[]) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setDelayedMessages(filterExpiredDelayed(data));
         }
       })
