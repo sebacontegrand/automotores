@@ -10,6 +10,11 @@ function checkAuth(req: NextRequest): boolean {
   return session?.value === "full";
 }
 
+function getUserIdentity(req: NextRequest): "USER_A" | "USER_B" {
+  const identityCookie = req.cookies.get("autovault_user_identity");
+  return identityCookie?.value === "USER_B" ? "USER_B" : "USER_A";
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!checkAuth(req)) {
@@ -43,10 +48,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { sender, content } = await req.json().catch(() => ({ sender: null, content: null }));
+    const sender = getUserIdentity(req);
+    const { content } = await req.json().catch(() => ({ content: null }));
 
-    if (!sender || !content) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    if (!content) {
+      return NextResponse.json({ error: "Missing content" }, { status: 400 });
     }
 
     const now = new Date();
@@ -77,10 +83,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(message);
   } catch (error) {
     console.error("Delayed messages POST error:", error);
+    const sender = getUserIdentity(req);
     const now = new Date();
     return NextResponse.json({
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
-      sender: "USER_A",
+      sender,
       content: "Message sent",
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + FIVE_DAYS_MS).toISOString(),
@@ -94,6 +101,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const sender = getUserIdentity(req);
     const { id, content } = await req.json().catch(() => ({ id: null, content: null }));
 
     if (!id || !content) {
@@ -102,6 +110,11 @@ export async function PATCH(req: NextRequest) {
 
     let message;
     try {
+      const existing = await prisma.delayedMessage.findUnique({ where: { id } });
+      if (existing && existing.sender !== sender) {
+        return NextResponse.json({ error: "Forbidden: Not your message" }, { status: 403 });
+      }
+
       message = await prisma.delayedMessage.update({
         where: { id },
         data: { content },
@@ -130,6 +143,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const sender = getUserIdentity(req);
     const { id } = await req.json().catch(() => ({ id: null }));
 
     if (!id) {
@@ -137,6 +151,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     try {
+      const existing = await prisma.delayedMessage.findUnique({ where: { id } });
+      if (existing && existing.sender !== sender) {
+        return NextResponse.json({ error: "Forbidden: Not your message" }, { status: 403 });
+      }
+
       await prisma.delayedMessage.delete({
         where: { id },
       });

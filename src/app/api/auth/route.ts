@@ -17,12 +17,19 @@ export async function DELETE() {
     path: "/",
     maxAge: 0,
   });
+  cookies().set("autovault_user_identity", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
   return NextResponse.json({ success: true });
 }
 
 export async function POST(req: Request) {
   try {
-    const { password } = await req.json();
+    const { password, userIdentity } = await req.json().catch(() => ({ password: null, userIdentity: null }));
 
     if (!password) {
       return NextResponse.json({ error: "Password is required" }, { status: 400 });
@@ -54,6 +61,17 @@ export async function POST(req: Request) {
         path: "/",
         maxAge: 60 * 60 * 24 * 7,
       });
+
+      if (sessionValue === "full") {
+        const assignedIdentity = userIdentity === "USER_B" ? "USER_B" : "USER_A";
+        cookies().set("autovault_user_identity", assignedIdentity, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 7,
+        });
+      }
 
       return NextResponse.json({ success: true, level: sessionValue });
     } else {

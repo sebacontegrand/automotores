@@ -46,9 +46,11 @@ export type DelayedMessage = {
 type Tab = "live" | "delayed";
 
 export function ChatInterface({
+  currentUser,
   initialMessages,
   initialDelayedMessages = [],
 }: {
+  currentUser: "USER_A" | "USER_B";
   initialMessages: Message[];
   initialDelayedMessages?: DelayedMessage[];
 }) {
@@ -60,8 +62,7 @@ export function ChatInterface({
 
   const [liveInput, setLiveInput] = useState("");
   const [delayedInput, setDelayedInput] = useState("");
-  const [currentUser, setCurrentUser] = useState<"USER_A" | "USER_B" | null>(null);
-  const currentUserRef = useRef<"USER_A" | "USER_B" | null>(null);
+  const currentUserRef = useRef<"USER_A" | "USER_B">(currentUser);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -78,29 +79,6 @@ export function ChatInterface({
   const [editContent, setEditContent] = useState("");
   const liveEndRef = useRef<HTMLDivElement>(null);
   const delayedEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("autovault_user_identity") : null;
-    if (saved === "USER_A" || saved === "USER_B") {
-      setCurrentUser(saved);
-      return;
-    }
-
-    if (initialDelayedMessages.length > 0) {
-      const lastSender = initialDelayedMessages[initialDelayedMessages.length - 1].sender;
-      const assigned = lastSender === "USER_A" ? "USER_B" : "USER_A";
-      setCurrentUser(assigned);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("autovault_user_identity", assigned);
-      }
-      return;
-    }
-
-    setCurrentUser("USER_A");
-    if (typeof window !== "undefined") {
-      localStorage.setItem("autovault_user_identity", "USER_A");
-    }
-  }, [initialDelayedMessages]);
 
   useEffect(() => {
     fetch("/api/delayed-messages")
@@ -134,16 +112,6 @@ export function ChatInterface({
       const myId = members.myID;
       const otherExists = members.members && Object.values(members.members).some((m) => m.user_id !== myId);
       setOtherUserOnline(count >= 2 || Boolean(otherExists));
-
-      if (!currentUserRef.current) {
-        if (otherExists) {
-          setCurrentUser("USER_B");
-          if (typeof window !== "undefined") localStorage.setItem("autovault_user_identity", "USER_B");
-        } else {
-          setCurrentUser("USER_A");
-          if (typeof window !== "undefined") localStorage.setItem("autovault_user_identity", "USER_A");
-        }
-      }
     });
     
     presenceChannel.bind("pusher:member_added", () => {
@@ -353,33 +321,14 @@ export function ChatInterface({
     }
   };
 
-  if (!currentUser) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <div className="text-slate-400 text-sm">Connecting...</div>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="bg-slate-800/50 px-4 py-2 flex items-center justify-between text-sm border-b border-slate-700/50">
         <div className="flex items-center space-x-2">
           <UserCircle className="w-5 h-5 text-slate-400" />
-          <span className="text-slate-300 font-medium">Identity: {currentUser}</span>
-          <button
-            onClick={() => {
-              const nextUser = currentUser === "USER_A" ? "USER_B" : "USER_A";
-              setCurrentUser(nextUser);
-              if (typeof window !== "undefined") {
-                localStorage.setItem("autovault_user_identity", nextUser);
-              }
-            }}
-            className="text-[11px] text-blue-400 hover:text-blue-300 underline ml-2 transition-colors"
-            title="Switch identity between USER_A and USER_B"
-          >
-            Switch to {currentUser === "USER_A" ? "USER_B" : "USER_A"}
-          </button>
+          <span className="text-slate-300 font-medium">
+            Identity: {currentUser === "USER_A" ? "User A" : "User B"}
+          </span>
         </div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">

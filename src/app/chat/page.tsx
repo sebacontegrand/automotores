@@ -15,6 +15,9 @@ export default async function ChatPage() {
     redirect("/");
   }
 
+  const identityCookie = cookieStore.get("autovault_user_identity");
+  const currentUser: "USER_A" | "USER_B" = identityCookie?.value === "USER_B" ? "USER_B" : "USER_A";
+
   let initialMessages: Message[] = [];
   try {
     initialMessages = await prisma.message.findMany({
@@ -50,7 +53,11 @@ export default async function ChatPage() {
           <h2 className="text-xl font-bold text-white tracking-tight">AutoVault Communications</h2>
           <span className="text-xs text-slate-400">Encrypted Channel</span>
         </header>
-        <ChatInterface initialMessages={initialMessages} initialDelayedMessages={initialDelayedMessages} />
+        <ChatInterface
+          currentUser={currentUser}
+          initialMessages={initialMessages}
+          initialDelayedMessages={initialDelayedMessages}
+        />
       </div>
     </div>
   );

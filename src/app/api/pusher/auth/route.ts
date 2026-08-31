@@ -18,9 +18,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (channelName.startsWith("presence-")) {
+      const identityCookie = req.cookies.get("autovault_user_identity");
+      const userIdentity = identityCookie?.value === "USER_B" ? "USER_B" : "USER_A";
       const presenceData = {
-        user_id: Math.random().toString(36).substring(7),
-        user_info: { name: "AutoVault User" },
+        user_id: userIdentity,
+        user_info: { name: userIdentity },
       };
       const authResponse = pusherServer.authorizeChannel(socketId, channelName, presenceData);
       return NextResponse.json(authResponse);

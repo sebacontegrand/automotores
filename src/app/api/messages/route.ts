@@ -1,13 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { pusherServer } from "@/lib/pusher";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { sender, content } = await req.json();
+    const session = req.cookies.get("autovault_session");
+    if (!session || session.value !== "full") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!sender || !content) {
-      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    const identityCookie = req.cookies.get("autovault_user_identity");
+    const sender = identityCookie?.value === "USER_B" ? "USER_B" : "USER_A";
+
+    const { content } = await req.json().catch(() => ({ content: null }));
+
+    if (!content) {
+      return NextResponse.json({ error: "Missing content" }, { status: 400 });
     }
 
     let message;
