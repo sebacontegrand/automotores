@@ -57,15 +57,42 @@ export function ChatInterface({
   const [delayedMessages, setDelayedMessages] = useState<DelayedMessage[]>(
     filterExpiredDelayed(initialDelayedMessages)
   );
+
+  useEffect(() => {
+    fetch("/api/delayed-messages")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDelayedMessages(filterExpiredDelayed(data));
+        }
+      })
+      .catch((err) => console.error("Failed to sync delayed messages:", err));
+  }, []);
   const [liveInput, setLiveInput] = useState("");
   const [delayedInput, setDelayedInput] = useState("");
   const [currentUser, setCurrentUser] = useState<"USER_A" | "USER_B" | null>(null);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
+  const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTypingSentRef = useRef<number>(0);
   const [activeTab, setActiveTab] = useState<Tab>("live");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const liveEndRef = useRef<HTMLDivElement>(null);
   const delayedEndRef = useRef<HTMLDivElement>(null);
+
+  const sendTypingSignal = (isTyping: boolean) => {
+    if (!currentUser) return;
+    const now = Date.now();
+    if (isTyping && now - lastTypingSentRef.current < 2000) return;
+    if (isTyping) lastTypingSentRef.current = now;
+
+    fetch("/api/pusher/typing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: currentUser, isTyping }),
+    }).catch((err) => console.error("Failed to send typing status", err));
+  };
 
   useEffect(() => {
     const presenceChannel = pusherClient.subscribe("presence-autovault");
@@ -127,6 +154,21 @@ export function ChatInterface({
       setDelayedMessages((prev) => prev.filter((m) => m.id !== data.id));
     });
 
+    privateChannel.bind("typing-status", (data: { sender: string; isTyping: boolean }) => {
+      if (data.sender !== currentUser) {
+        if (data.isTyping) {
+          setOtherUserTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => {
+            setOtherUserTyping(false);
+          }, 3000);
+        } else {
+          setOtherUserTyping(false);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        }
+      }
+    });
+
     return () => {
       pusherClient.unsubscribe("presence-autovault");
       pusherClient.unsubscribe("private-chat");
@@ -153,6 +195,7 @@ export function ChatInterface({
     e.preventDefault();
     if (!liveInput.trim() || !currentUser) return;
 
+    sendTypingSignal(false);
     const content = liveInput;
     setLiveInput("");
 
@@ -193,6 +236,7 @@ export function ChatInterface({
     e.preventDefault();
     if (!delayedInput.trim() || !currentUser) return;
 
+    sendTypingSignal(false);
     const content = delayedInput;
     setDelayedInput("");
 
@@ -301,6 +345,7 @@ export function ChatInterface({
             onClick={async () => {
               await fetch("/api/auth", { method: "DELETE" });
               router.push("/");
+              router.refresh();
             }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-semibold transition-colors"
             title="End session and return to gallery"
@@ -364,10 +409,28 @@ export function ChatInterface({
             <div ref={liveEndRef} />
           </div>
 
+          {otherUserTyping && (
+            <div className="px-4 py-2 bg-slate-900/90 border-t border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex space-x-1 items-center">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></span>
+              </div>
+              <span className="font-medium text-slate-300">Partner is typing...</span>
+            </div>
+          )}
+
           <form onSubmit={sendLiveMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
             <Input 
               value={liveInput}
-              onChange={(e) => setLiveInput(e.target.value)}
+              onChange={(e) => {
+                setLiveInput(e.target.value);
+                if (e.target.value.trim().length > 0) {
+                  sendTypingSignal(true);
+                } else {
+                  sendTypingSignal(false);
+                }
+              }}
               placeholder="Type a secure message..." 
               className="flex-1 bg-slate-900 border-slate-700 text-white"
             />
@@ -460,10 +523,28 @@ export function ChatInterface({
             <div ref={delayedEndRef} />
           </div>
 
+          {otherUserTyping && (
+            <div className="px-4 py-2 bg-slate-900/90 border-t border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+              <div className="flex space-x-1 items-center">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce"></span>
+              </div>
+              <span className="font-medium text-slate-300">Partner is typing...</span>
+            </div>
+          )}
+
           <form onSubmit={sendDelayedMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
             <Input 
               value={delayedInput}
-              onChange={(e) => setDelayedInput(e.target.value)}
+              onChange={(e) => {
+                setDelayedInput(e.target.value);
+                if (e.target.value.trim().length > 0) {
+                  sendTypingSignal(true);
+                } else {
+                  sendTypingSignal(false);
+                }
+              }}
               placeholder="Leave a message that fades over 5 days..." 
               className="flex-1 bg-slate-900 border-slate-700 text-white"
             />

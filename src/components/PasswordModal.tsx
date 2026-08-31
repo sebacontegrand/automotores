@@ -32,6 +32,7 @@ export function PasswordModal({ isOpen, onClose }: PasswordModalProps) {
       if (res.ok) {
         // Success, redirect to chat
         router.push("/chat");
+        router.refresh();
       } else {
         const data = await res.json();
         setError(data.error || "Invalid credentials");

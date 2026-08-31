@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { ChatInterface } from "@/components/ChatInterface";
 import type { Message, DelayedMessage } from "@/components/ChatInterface";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function ChatPage() {
   const cookieStore = cookies();
   const session = cookieStore.get("autovault_session");
