@@ -58,19 +58,15 @@ export function ChatInterface({
     filterExpiredDelayed(initialDelayedMessages)
   );
 
-  useEffect(() => {
-    fetch("/api/delayed-messages")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setDelayedMessages(filterExpiredDelayed(data));
-        }
-      })
-      .catch((err) => console.error("Failed to sync delayed messages:", err));
-  }, []);
   const [liveInput, setLiveInput] = useState("");
   const [delayedInput, setDelayedInput] = useState("");
   const [currentUser, setCurrentUser] = useState<"USER_A" | "USER_B" | null>(null);
+  const currentUserRef = useRef<"USER_A" | "USER_B" | null>(null);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -155,7 +151,7 @@ export function ChatInterface({
     });
 
     privateChannel.bind("typing-status", (data: { sender: string; isTyping: boolean }) => {
-      if (data.sender !== currentUser) {
+      if (data.sender !== currentUserRef.current) {
         if (data.isTyping) {
           setOtherUserTyping(true);
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -173,7 +169,7 @@ export function ChatInterface({
       pusherClient.unsubscribe("presence-autovault");
       pusherClient.unsubscribe("private-chat");
     };
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
