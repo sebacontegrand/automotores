@@ -68,17 +68,27 @@ export function ChatInterface({
   const delayedEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("autovault_user") as "USER_A" | "USER_B";
-    if (savedUser) setCurrentUser(savedUser);
-  }, []);
-
-  useEffect(() => {
-    if (!currentUser) return;
-
     const presenceChannel = pusherClient.subscribe("presence-autovault");
     
-    presenceChannel.bind("pusher:subscription_succeeded", (members: { count: number }) => {
-      if (members.count > 1) setOtherUserOnline(true);
+    presenceChannel.bind("pusher:subscription_succeeded", (members: { count: number; myID: string; members: Record<string, { user_id: string }> }) => {
+      const count = members.count;
+      const myId = members.myID;
+      
+      if (count === 1) {
+        setCurrentUser("USER_A");
+        setOtherUserOnline(false);
+      } else if (count >= 2) {
+        const otherUserExists = members.members && Object.values(members.members).some(
+          (m) => m.user_id !== myId
+        );
+        if (otherUserExists) {
+          setCurrentUser("USER_B");
+          setOtherUserOnline(true);
+        } else {
+          setCurrentUser("USER_A");
+          setOtherUserOnline(false);
+        }
+      }
     });
     
     presenceChannel.bind("pusher:member_added", () => {
@@ -138,11 +148,6 @@ export function ChatInterface({
       delayedEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, delayedMessages, activeTab]);
-
-  const selectUser = (user: "USER_A" | "USER_B") => {
-    localStorage.setItem("autovault_user", user);
-    setCurrentUser(user);
-  };
 
   const sendLiveMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,12 +279,8 @@ export function ChatInterface({
 
   if (!currentUser) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6">
-        <h3 className="text-2xl font-semibold text-white">Select Identity</h3>
-        <div className="flex space-x-4">
-          <Button onClick={() => selectUser("USER_A")} size="lg" className="bg-blue-600 hover:bg-blue-700">User A</Button>
-          <Button onClick={() => selectUser("USER_B")} size="lg" className="bg-emerald-600 hover:bg-emerald-700">User B</Button>
-        </div>
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
+        <div className="text-slate-400 text-sm">Connecting...</div>
       </div>
     );
   }
