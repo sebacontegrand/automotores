@@ -15,7 +15,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let messages = [];
+    let messages: Awaited<ReturnType<typeof prisma.delayedMessage.findMany>> = [];
     try {
       messages = await prisma.delayedMessage.findMany({
         where: {
