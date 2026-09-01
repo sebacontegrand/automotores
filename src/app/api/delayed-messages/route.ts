@@ -23,6 +23,15 @@ export async function GET(req: NextRequest) {
 
     let messages: Awaited<ReturnType<typeof prisma.delayedMessage.findMany>> = [];
     try {
+      // Auto-delete expired delayed messages
+      await prisma.delayedMessage.deleteMany({
+        where: {
+          expiresAt: {
+            lte: new Date()
+          }
+        }
+      }).catch(() => {});
+
       messages = await prisma.delayedMessage.findMany({
         where: {
           expiresAt: {

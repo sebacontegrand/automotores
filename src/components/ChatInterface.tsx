@@ -19,13 +19,51 @@ function filterExpired(msgs: Message[]): Message[] {
 }
 
 function getDelayedOpacity(msg: DelayedMessage): number {
-  const elapsed = Date.now() - new Date(msg.createdAt).getTime();
-  const opacity = 1 - (0.7 * (elapsed / FIVE_DAYS_MS));
-  return Math.max(0, opacity);
+  const createdAtMs = new Date(msg.createdAt).getTime();
+  const expiresAtMs = msg.expiresAt
+    ? new Date(msg.expiresAt).getTime()
+    : createdAtMs + FIVE_DAYS_MS;
+  const totalDuration = expiresAtMs - createdAtMs || FIVE_DAYS_MS;
+  const elapsed = Date.now() - createdAtMs;
+
+  if (elapsed <= 0) return 1;
+  if (Date.now() >= expiresAtMs) return 0;
+
+  const rawOpacity = 1 - elapsed / totalDuration;
+  return Math.max(0, Math.min(1, rawOpacity));
 }
 
 function filterExpiredDelayed(msgs: DelayedMessage[]): DelayedMessage[] {
-  return msgs.filter((m) => getDelayedOpacity(m) > 0);
+  const now = Date.now();
+  return msgs.filter((m) => {
+    const expiresAtMs = m.expiresAt
+      ? new Date(m.expiresAt).getTime()
+      : new Date(m.createdAt).getTime() + FIVE_DAYS_MS;
+    return expiresAtMs > now && getDelayedOpacity(m) > 0;
+  });
+}
+
+function getRemainingTimeLabel(msg: DelayedMessage): string {
+  const expiresAtMs = msg.expiresAt
+    ? new Date(msg.expiresAt).getTime()
+    : new Date(msg.createdAt).getTime() + FIVE_DAYS_MS;
+  const remainingMs = expiresAtMs - Date.now();
+
+  if (remainingMs <= 0) return "Expired";
+
+  const totalMinutes = Math.floor(remainingMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  if (days >= 1) {
+    return hours > 0 ? `${days}d ${hours}h left` : `${days} day${days > 1 ? 's' : ''} left`;
+  }
+  if (totalHours >= 1) {
+    const mins = totalMinutes % 60;
+    return mins > 0 ? `${totalHours}h ${mins}m left` : `${totalHours} hour${totalHours > 1 ? 's' : ''} left`;
+  }
+  return `${Math.max(1, totalMinutes)} min${totalMinutes !== 1 ? 's' : ''} left`;
 }
 
 export type Message = {
@@ -176,11 +214,14 @@ export function ChatInterface({
     };
   }, []);
 
+  const [, setTicker] = useState(0);
+
   useEffect(() => {
     const interval = setInterval(() => {
+      setTicker((t) => t + 1);
       setMessages((prev) => filterExpired(prev));
       setDelayedMessages((prev) => filterExpiredDelayed(prev));
-    }, 30_000);
+    }, 10_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -450,21 +491,31 @@ export function ChatInterface({
             ) : (
               delayedMessages.map((msg) => {
                 const isMe = msg.sender === currentUser;
-                const opacity = getDelayedOpacity(msg);
-                const daysLeft = Math.ceil((new Date(msg.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+                const rawOpacity = getDelayedOpacity(msg);
+                // Ensure text stays readable down to 0.15 opacity before expiration
+                const visualOpacity = rawOpacity === 0 ? 0 : Math.max(0.18, rawOpacity);
+                const opacityPercent = Math.round(rawOpacity * 100);
+                const remainingLabel = getRemainingTimeLabel(msg);
                 const isEditing = editingId === msg.id;
 
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`} style={{ opacity }}>
+                  <div
+                    key={msg.id}
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                    style={{ opacity: visualOpacity, transition: "opacity 1s ease-out" }}
+                  >
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                       isMe
-                        ? 'border-2 border-dashed border-blue-500/50 bg-blue-900/30 text-blue-100 rounded-br-sm'
+                        ? 'border-2 border-dashed border-amber-500/40 bg-amber-950/20 text-amber-100 rounded-br-sm'
                         : 'border-2 border-dashed border-slate-600/50 bg-slate-800/50 text-slate-200 rounded-bl-sm'
                     }`}>
                       <div className="flex items-center gap-1.5 mb-1.5">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {daysLeft > 0 ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left` : 'Expiring soon'}
+                        <Clock className="w-3 h-3 text-amber-400" />
+                        <span className="text-[10px] text-amber-300 font-medium">
+                          {remainingLabel}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-mono bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 ml-0.5">
+                          {opacityPercent}% opacity
                         </span>
                         {isMe && !isEditing && (
                           <div className="ml-auto flex items-center gap-1">
