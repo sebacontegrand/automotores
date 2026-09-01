@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { pusherClient } from "@/lib/pusher-client";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send, UserCircle, LogOut, Clock, MessageSquare, Pencil, Trash2, Check, X } from "lucide-react";
 
@@ -491,30 +492,43 @@ export function ChatInterface({
             ) : (
               delayedMessages.map((msg) => {
                 const isMe = msg.sender === currentUser;
+                const isUserA = msg.sender === "USER_A";
                 const rawOpacity = getDelayedOpacity(msg);
-                // Ensure text stays readable down to 0.15 opacity before expiration
+                // Ensure text stays readable down to 0.18 opacity before expiration
                 const visualOpacity = rawOpacity === 0 ? 0 : Math.max(0.18, rawOpacity);
                 const opacityPercent = Math.round(rawOpacity * 100);
                 const remainingLabel = getRemainingTimeLabel(msg);
                 const isEditing = editingId === msg.id;
 
+                // User A is placed on right (justify-end), User B on left (justify-start)
+                const sideClass = isUserA ? 'justify-end' : 'justify-start';
+
                 return (
                   <div
                     key={msg.id}
-                    className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${sideClass}`}
                     style={{ opacity: visualOpacity, transition: "opacity 1s ease-out" }}
                   >
-                    <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                      isMe
-                        ? 'border-2 border-dashed border-amber-500/40 bg-amber-950/20 text-amber-100 rounded-br-sm'
-                        : 'border-2 border-dashed border-slate-600/50 bg-slate-800/50 text-slate-200 rounded-bl-sm'
+                    <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                      isUserA
+                        ? 'border-2 border-dashed border-amber-500/50 bg-amber-950/30 text-amber-100 rounded-br-sm shadow-md'
+                        : 'border-2 border-dashed border-cyan-500/50 bg-cyan-950/30 text-cyan-100 rounded-bl-sm shadow-md'
                     }`}>
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Clock className="w-3 h-3 text-amber-400" />
-                        <span className="text-[10px] text-amber-300 font-medium">
-                          {remainingLabel}
+                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
+                          isUserA 
+                            ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' 
+                            : 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40'
+                        }`}>
+                          {isUserA ? 'User A' : 'User B'}
                         </span>
-                        <span className="text-[9px] text-slate-400 font-mono bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 ml-0.5">
+                        <div className="flex items-center gap-1 text-[10px]">
+                          <Clock className={`w-3 h-3 ${isUserA ? 'text-amber-400' : 'text-cyan-400'}`} />
+                          <span className={`font-medium ${isUserA ? 'text-amber-300' : 'text-cyan-300'}`}>
+                            {remainingLabel}
+                          </span>
+                        </div>
+                        <span className="text-[9px] text-slate-400 font-mono bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700/60 ml-auto sm:ml-0">
                           {opacityPercent}% opacity
                         </span>
                         {isMe && !isEditing && (
@@ -537,32 +551,35 @@ export function ChatInterface({
                         )}
                       </div>
                       {isEditing ? (
-                        <div className="flex flex-col gap-2">
-                          <Input
+                        <div className="flex flex-col gap-2 my-1">
+                          <Textarea
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
-                            className="bg-slate-900 border-slate-600 text-white text-sm"
+                            rows={3}
+                            className="bg-slate-900 border-slate-600 text-white text-sm resize-none"
                             autoFocus
                           />
                           <div className="flex gap-1 justify-end">
                             <button
                               onClick={cancelEdit}
-                              className="p-1 rounded hover:bg-slate-700/50 transition-colors"
+                              className="p-1.5 rounded hover:bg-slate-700/50 transition-colors"
+                              title="Cancel edit"
                             >
                               <X className="w-4 h-4 text-slate-400" />
                             </button>
                             <button
                               onClick={() => saveEdit(msg.id)}
-                              className="p-1 rounded hover:bg-green-900/50 transition-colors"
+                              className="p-1.5 rounded hover:bg-green-900/50 transition-colors"
+                              title="Save edit"
                             >
                               <Check className="w-4 h-4 text-green-400" />
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <p>{msg.content}</p>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
                       )}
-                      <span className={`text-[10px] mt-1 block ${isMe ? 'text-blue-200 text-right' : 'text-slate-400'}`}>
+                      <span className={`text-[10px] mt-1.5 block ${isUserA ? 'text-amber-300/70 text-right' : 'text-cyan-300/70 text-left'}`}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
@@ -584,8 +601,8 @@ export function ChatInterface({
             </div>
           )}
 
-          <form onSubmit={sendDelayedMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
-            <Input 
+          <form onSubmit={sendDelayedMessage} className="p-3 sm:p-4 bg-slate-800 border-t border-slate-700 flex flex-col sm:flex-row gap-2.5">
+            <Textarea 
               value={delayedInput}
               onChange={(e) => {
                 setDelayedInput(e.target.value);
@@ -595,11 +612,25 @@ export function ChatInterface({
                   sendTypingSignal(false);
                 }
               }}
-              placeholder="Leave a message that fades over 5 days..." 
-              className="flex-1 bg-slate-900 border-slate-700 text-white"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (delayedInput.trim()) {
+                    sendDelayedMessage(e);
+                  }
+                }
+              }}
+              placeholder="Leave a message that fades over 5 days... (Shift+Enter for new line)" 
+              rows={2}
+              className="flex-1 bg-slate-900 border-slate-700 text-white text-sm resize-none"
             />
-            <Button type="submit" size="icon" disabled={!delayedInput.trim()} className="bg-amber-600 hover:bg-amber-700">
+            <Button
+              type="submit"
+              disabled={!delayedInput.trim()}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-2 self-end sm:self-auto h-auto py-2.5 px-4 rounded-lg font-medium"
+            >
               <Send className="h-4 w-4" />
+              <span className="text-xs sm:hidden">Send Message</span>
             </Button>
           </form>
         </>
