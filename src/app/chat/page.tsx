@@ -47,11 +47,11 @@ export default async function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-8">
-      <div className="w-full max-w-4xl h-[80vh] bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl flex flex-col">
-        <header className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-white tracking-tight">AutoVault Communications</h2>
-          <span className="text-xs text-slate-400">Encrypted Channel</span>
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-2 sm:p-8">
+      <div className="w-full max-w-4xl h-[92vh] sm:h-[80vh] bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl flex flex-col">
+        <header className="bg-slate-800 p-3 sm:p-4 border-b border-slate-700 flex justify-between items-center">
+          <h2 className="text-base sm:text-xl font-bold text-white tracking-tight">AutoVault Communications</h2>
+          <span className="text-[10px] sm:text-xs text-slate-400">Encrypted Channel</span>
         </header>
         <ChatInterface
           currentUser={currentUser}

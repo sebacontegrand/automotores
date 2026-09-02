@@ -123,12 +123,12 @@ function AttachmentDisplay({
           href={fileUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block group relative overflow-hidden rounded-lg border border-slate-700/60 max-w-sm"
+          className="block group relative overflow-hidden rounded-lg border border-slate-700/60 max-w-[200px] sm:max-w-sm"
         >
           <img
             src={fileUrl}
             alt={displayName}
-            className="max-h-60 w-auto object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
+            className="max-h-36 sm:max-h-56 w-auto object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
           />
           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
             <span className="bg-slate-900/90 text-white text-[11px] px-2.5 py-1 rounded-full backdrop-blur-sm flex items-center gap-1.5 font-medium shadow-lg">
@@ -905,7 +905,7 @@ export function ChatInterface({
                 currentUser === "USER_A"
                   ? 'bg-amber-950/30 border-amber-500/50 text-amber-100'
                   : 'bg-cyan-950/30 border-cyan-500/50 text-cyan-100'
-              } text-xs max-h-36 overflow-y-auto shadow-inner`}>
+              } text-xs max-h-24 sm:max-h-36 overflow-y-auto shadow-inner`}>
                 <div className="flex items-center gap-1.5 mb-1.5 text-[10px]">
                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                     currentUser === "USER_A"
@@ -983,8 +983,8 @@ export function ChatInterface({
                 }
               }}
               placeholder="Leave a message that fades over 5 days... (Shift+Enter for new line)" 
-              rows={3}
-              className="flex-1 bg-slate-900 border-slate-700 text-white text-sm min-h-[80px] max-h-[180px] focus:ring-amber-500/50"
+              rows={2}
+              className="flex-1 bg-slate-900 border-slate-700 text-white text-sm min-h-[50px] sm:min-h-[80px] max-h-[120px] sm:max-h-[180px] focus:ring-amber-500/50"
             />
             <div className="flex gap-2 items-center self-end sm:self-auto">
               <Button
