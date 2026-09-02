@@ -58,10 +58,15 @@ export async function POST(req: NextRequest) {
     }
 
     const sender = getUserIdentity(req);
-    const { content } = await req.json().catch(() => ({ content: null }));
+    const { content, fileUrl, fileName, fileType } = await req.json().catch(() => ({
+      content: null,
+      fileUrl: null,
+      fileName: null,
+      fileType: null,
+    }));
 
-    if (!content) {
-      return NextResponse.json({ error: "Missing content" }, { status: 400 });
+    if (!content && !fileUrl) {
+      return NextResponse.json({ error: "Missing content or file attachment" }, { status: 400 });
     }
 
     const now = new Date();
@@ -70,14 +75,24 @@ export async function POST(req: NextRequest) {
     let message;
     try {
       message = await prisma.delayedMessage.create({
-        data: { sender, content, expiresAt },
+        data: {
+          sender,
+          content: content || "",
+          fileUrl: fileUrl || null,
+          fileName: fileName || null,
+          fileType: fileType || null,
+          expiresAt,
+        },
       });
     } catch (e) {
       console.warn("Prisma failed creating delayed message, using fallback:", e);
       message = {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         sender,
-        content,
+        content: content || "",
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        fileType: fileType || null,
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
       };

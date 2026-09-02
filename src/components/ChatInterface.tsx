@@ -6,7 +6,23 @@ import { pusherClient } from "@/lib/pusher-client";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Send, UserCircle, LogOut, Clock, MessageSquare, Pencil, Trash2, Check, X, Eye, ArrowDown } from "lucide-react";
+import {
+  Send,
+  UserCircle,
+  LogOut,
+  Clock,
+  MessageSquare,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Eye,
+  ArrowDown,
+  Paperclip,
+  FileText,
+  Download,
+  Loader2,
+} from "lucide-react";
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
@@ -67,10 +83,96 @@ function getRemainingTimeLabel(msg: DelayedMessage): string {
   return `${Math.max(1, totalMinutes)} min${totalMinutes !== 1 ? 's' : ''} left`;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function isImageFile(fileType?: string | null, fileUrl?: string | null): boolean {
+  if (fileType?.startsWith("image/")) return true;
+  if (fileUrl) {
+    const ext = fileUrl.split(".").pop()?.toLowerCase();
+    if (ext && ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"].includes(ext)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function AttachmentDisplay({
+  fileUrl,
+  fileName,
+  fileType,
+  isMe,
+}: {
+  fileUrl: string;
+  fileName?: string | null;
+  fileType?: string | null;
+  isMe?: boolean;
+}) {
+  const isImg = isImageFile(fileType, fileUrl);
+  const displayName = fileName || fileUrl.split("/").pop() || "Attachment";
+
+  if (isImg) {
+    return (
+      <div className="mt-2">
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block group relative overflow-hidden rounded-lg border border-slate-700/60 max-w-sm"
+        >
+          <img
+            src={fileUrl}
+            alt={displayName}
+            className="max-h-60 w-auto object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
+          />
+          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="bg-slate-900/90 text-white text-[11px] px-2.5 py-1 rounded-full backdrop-blur-sm flex items-center gap-1.5 font-medium shadow-lg">
+              <Eye className="w-3.5 h-3.5" /> View full image
+            </span>
+          </div>
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <a
+        href={fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        download={displayName}
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-colors border ${
+          isMe
+            ? "bg-blue-700/40 hover:bg-blue-700/60 border-blue-400/30 text-white"
+            : "bg-slate-800/80 hover:bg-slate-800 border-slate-600/50 text-slate-200"
+        }`}
+      >
+        <div className="p-1.5 rounded-lg bg-slate-900/60 text-blue-400 shrink-0">
+          <FileText className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium truncate text-xs">{displayName}</p>
+          <span className="text-[10px] text-slate-400 block">Click to download</span>
+        </div>
+        <Download className="w-3.5 h-3.5 text-slate-400 shrink-0 hover:text-white transition-colors" />
+      </a>
+    </div>
+  );
+}
+
 export type Message = {
   id: string;
   sender: "USER_A" | "USER_B";
   content: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileType?: string | null;
   createdAt: Date | string;
 };
 
@@ -78,11 +180,30 @@ export type DelayedMessage = {
   id: string;
   sender: "USER_A" | "USER_B";
   content: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileType?: string | null;
   createdAt: Date | string;
   expiresAt: Date | string;
 };
 
 type Tab = "live" | "delayed";
+
+async function uploadFile(file: File): Promise<{ url: string; name: string; type: string } | null> {
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error("Upload error:", err);
+    return null;
+  }
+}
 
 export function ChatInterface({
   currentUser,
@@ -102,6 +223,14 @@ export function ChatInterface({
   const [liveInput, setLiveInput] = useState("");
   const [delayedInput, setDelayedInput] = useState("");
   const currentUserRef = useRef<"USER_A" | "USER_B">(currentUser);
+
+  const [liveFile, setLiveFile] = useState<File | null>(null);
+  const [isUploadingLive, setIsUploadingLive] = useState(false);
+  const liveFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [delayedFile, setDelayedFile] = useState<File | null>(null);
+  const [isUploadingDelayed, setIsUploadingDelayed] = useState(false);
+  const delayedFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -258,17 +387,35 @@ export function ChatInterface({
 
   const sendLiveMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!liveInput.trim() || !currentUser) return;
+    if ((!liveInput.trim() && !liveFile) || isUploadingLive || !currentUser) return;
 
     sendTypingSignal(false);
     const content = liveInput;
+    const attachedFile = liveFile;
+
     setLiveInput("");
+    setLiveFile(null);
+    if (liveFileInputRef.current) liveFileInputRef.current.value = "";
+
+    let uploaded: { url: string; name: string; type: string } | null = null;
+    if (attachedFile) {
+      setIsUploadingLive(true);
+      uploaded = await uploadFile(attachedFile);
+      setIsUploadingLive(false);
+      if (!uploaded && !content.trim()) {
+        console.error("Failed to upload file");
+        return;
+      }
+    }
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
       id: tempId,
       sender: currentUser,
       content,
+      fileUrl: uploaded?.url || null,
+      fileName: uploaded?.name || (attachedFile ? attachedFile.name : null),
+      fileType: uploaded?.type || (attachedFile ? attachedFile.type : null),
       createdAt: new Date(),
     };
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -278,7 +425,13 @@ export function ChatInterface({
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: currentUser, content }),
+        body: JSON.stringify({
+          sender: currentUser,
+          content,
+          fileUrl: uploaded?.url,
+          fileName: uploaded?.name,
+          fileType: uploaded?.type,
+        }),
       });
       if (res.ok) {
         const serverMsg = await res.json();
@@ -300,17 +453,35 @@ export function ChatInterface({
 
   const sendDelayedMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!delayedInput.trim() || !currentUser) return;
+    if ((!delayedInput.trim() && !delayedFile) || isUploadingDelayed || !currentUser) return;
 
     sendTypingSignal(false);
     const content = delayedInput;
+    const attachedFile = delayedFile;
+
     setDelayedInput("");
+    setDelayedFile(null);
+    if (delayedFileInputRef.current) delayedFileInputRef.current.value = "";
+
+    let uploaded: { url: string; name: string; type: string } | null = null;
+    if (attachedFile) {
+      setIsUploadingDelayed(true);
+      uploaded = await uploadFile(attachedFile);
+      setIsUploadingDelayed(false);
+      if (!uploaded && !content.trim()) {
+        console.error("Failed to upload file");
+        return;
+      }
+    }
 
     const tempId = `temp-delayed-${Date.now()}`;
     const optimisticMessage: DelayedMessage = {
       id: tempId,
       sender: currentUser,
       content,
+      fileUrl: uploaded?.url || null,
+      fileName: uploaded?.name || (attachedFile ? attachedFile.name : null),
+      fileType: uploaded?.type || (attachedFile ? attachedFile.type : null),
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + FIVE_DAYS_MS),
     };
@@ -321,7 +492,13 @@ export function ChatInterface({
       const res = await fetch("/api/delayed-messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: currentUser, content }),
+        body: JSON.stringify({
+          sender: currentUser,
+          content,
+          fileUrl: uploaded?.url,
+          fileName: uploaded?.name,
+          fileType: uploaded?.type,
+        }),
       });
       if (res.ok) {
         const serverMsg = await res.json();
@@ -331,7 +508,11 @@ export function ChatInterface({
           }
           return prev.map((m) =>
             m.id === tempId
-              ? { ...serverMsg, createdAt: new Date(serverMsg.createdAt), expiresAt: new Date(serverMsg.expiresAt) }
+              ? {
+                  ...serverMsg,
+                  createdAt: new Date(serverMsg.createdAt),
+                  expiresAt: new Date(serverMsg.expiresAt),
+                }
               : m
           );
         });
@@ -463,7 +644,15 @@ export function ChatInterface({
                       ? 'bg-blue-600 text-white rounded-br-sm' 
                       : 'bg-slate-700 text-slate-100 rounded-bl-sm'
                   }`}>
-                    <p>{msg.content}</p>
+                    {msg.content && <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}
+                    {msg.fileUrl && (
+                      <AttachmentDisplay
+                        fileUrl={msg.fileUrl}
+                        fileName={msg.fileName}
+                        fileType={msg.fileType}
+                        isMe={isMe}
+                      />
+                    )}
                     <span className={`text-[10px] mt-1 block ${isMe ? 'text-blue-200 text-right' : 'text-slate-400'}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -495,7 +684,48 @@ export function ChatInterface({
             </div>
           )}
 
-          <form onSubmit={sendLiveMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
+          {liveFile && (
+            <div className="px-4 py-2 bg-slate-900/95 border-t border-blue-500/30 flex items-center justify-between text-xs text-blue-300">
+              <div className="flex items-center gap-2 truncate">
+                <Paperclip className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="font-medium truncate">{liveFile.name}</span>
+                <span className="text-slate-400 text-[10px]">({formatFileSize(liveFile.size)})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLiveFile(null);
+                  if (liveFileInputRef.current) liveFileInputRef.current.value = "";
+                }}
+                className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                title="Remove attachment"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={sendLiveMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2 items-center">
+            <input
+              type="file"
+              ref={liveFileInputRef}
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setLiveFile(e.target.files[0]);
+                }
+              }}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => liveFileInputRef.current?.click()}
+              className="text-slate-400 hover:text-white hover:bg-slate-700/60 shrink-0"
+              title="Attach file"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Input 
               value={liveInput}
               onChange={(e) => {
@@ -509,8 +739,13 @@ export function ChatInterface({
               placeholder="Type a secure message..." 
               className="flex-1 bg-slate-900 border-slate-700 text-white"
             />
-            <Button type="submit" size="icon" disabled={!liveInput.trim()} className="bg-blue-600 hover:bg-blue-700">
-              <Send className="h-4 w-4" />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={(!liveInput.trim() && !liveFile) || isUploadingLive}
+              className="bg-blue-600 hover:bg-blue-700 shrink-0"
+            >
+              {isUploadingLive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
         </>
@@ -611,7 +846,17 @@ export function ChatInterface({
                           </div>
                         </div>
                       ) : (
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                        <>
+                          {msg.content && <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>}
+                          {msg.fileUrl && (
+                            <AttachmentDisplay
+                              fileUrl={msg.fileUrl}
+                              fileName={msg.fileName}
+                              fileType={msg.fileType}
+                              isMe={isMe}
+                            />
+                          )}
+                        </>
                       )}
                       <span className={`text-[10px] mt-1.5 block ${isUserA ? 'text-amber-300/70 text-left' : 'text-cyan-300/70 text-right'}`}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -645,7 +890,7 @@ export function ChatInterface({
             </div>
           )}
 
-          {delayedInput.trim().length > 0 && (
+          {(delayedInput.trim().length > 0 || delayedFile) && (
             <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-900/95 border-t border-amber-500/30 flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
                 <div className="flex items-center gap-1.5">
@@ -675,12 +920,50 @@ export function ChatInterface({
                     100% opacity
                   </span>
                 </div>
-                <p className="whitespace-pre-wrap leading-relaxed text-sm">{delayedInput}</p>
+                {delayedInput && <p className="whitespace-pre-wrap leading-relaxed text-sm">{delayedInput}</p>}
+                {delayedFile && (
+                  <div className="mt-2 flex items-center gap-2 p-2 rounded bg-slate-900/70 border border-slate-700/60 text-slate-300 text-xs">
+                    <Paperclip className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">{delayedFile.name}</span>
+                    <span className="text-[10px] text-slate-400">({formatFileSize(delayedFile.size)})</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
+          {delayedFile && (
+            <div className="px-4 py-2 bg-slate-900/95 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+              <div className="flex items-center gap-2 truncate">
+                <Paperclip className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="font-medium truncate">{delayedFile.name}</span>
+                <span className="text-slate-400 text-[10px]">({formatFileSize(delayedFile.size)})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDelayedFile(null);
+                  if (delayedFileInputRef.current) delayedFileInputRef.current.value = "";
+                }}
+                className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                title="Remove attachment"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <form onSubmit={sendDelayedMessage} className="p-3 sm:p-4 bg-slate-800 border-t border-slate-700 flex flex-col sm:flex-row gap-2.5">
+            <input
+              type="file"
+              ref={delayedFileInputRef}
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setDelayedFile(e.target.files[0]);
+                }
+              }}
+              className="hidden"
+            />
             <Textarea 
               value={delayedInput}
               onChange={(e) => {
@@ -694,7 +977,7 @@ export function ChatInterface({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (delayedInput.trim()) {
+                  if (delayedInput.trim() || delayedFile) {
                     sendDelayedMessage(e);
                   }
                 }
@@ -703,14 +986,26 @@ export function ChatInterface({
               rows={3}
               className="flex-1 bg-slate-900 border-slate-700 text-white text-sm min-h-[80px] max-h-[180px] focus:ring-amber-500/50"
             />
-            <Button
-              type="submit"
-              disabled={!delayedInput.trim()}
-              className="bg-amber-600 hover:bg-amber-700 text-white gap-2 self-end sm:self-auto h-auto py-2.5 px-4 rounded-lg font-medium"
-            >
-              <Send className="h-4 w-4" />
-              <span className="text-xs sm:hidden">Send Message</span>
-            </Button>
+            <div className="flex gap-2 items-center self-end sm:self-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => delayedFileInputRef.current?.click()}
+                className="text-slate-400 hover:text-white hover:bg-slate-700/60 shrink-0"
+                title="Attach file"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Button
+                type="submit"
+                disabled={(!delayedInput.trim() && !delayedFile) || isUploadingDelayed}
+                className="bg-amber-600 hover:bg-amber-700 text-white gap-2 py-2.5 px-4 rounded-lg font-medium"
+              >
+                {isUploadingDelayed ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                <span className="text-xs sm:hidden">Send Message</span>
+              </Button>
+            </div>
           </form>
         </>
       )}

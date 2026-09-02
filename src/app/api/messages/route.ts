@@ -12,23 +12,37 @@ export async function POST(req: NextRequest) {
     const identityCookie = req.cookies.get("autovault_user_identity");
     const sender = identityCookie?.value === "USER_B" ? "USER_B" : "USER_A";
 
-    const { content } = await req.json().catch(() => ({ content: null }));
+    const { content, fileUrl, fileName, fileType } = await req.json().catch(() => ({
+      content: null,
+      fileUrl: null,
+      fileName: null,
+      fileType: null,
+    }));
 
-    if (!content) {
-      return NextResponse.json({ error: "Missing content" }, { status: 400 });
+    if (!content && !fileUrl) {
+      return NextResponse.json({ error: "Missing content or file attachment" }, { status: 400 });
     }
 
     let message;
     try {
       message = await prisma.message.create({
-        data: { sender, content },
+        data: {
+          sender,
+          content: content || "",
+          fileUrl: fileUrl || null,
+          fileName: fileName || null,
+          fileType: fileType || null,
+        },
       });
     } catch (e) {
       console.warn("Prisma failed, creating fake message to broadcast", e);
       message = {
         id: Math.random().toString(),
         sender,
-        content,
+        content: content || "",
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        fileType: fileType || null,
         createdAt: new Date(),
       };
     }
