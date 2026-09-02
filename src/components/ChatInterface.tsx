@@ -17,11 +17,14 @@ import {
   Check,
   X,
   Eye,
+  EyeOff,
   ArrowDown,
   Paperclip,
   FileText,
   Download,
   Loader2,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -113,17 +116,33 @@ function AttachmentDisplay({
   fileType?: string | null;
   isMe?: boolean;
 }) {
+  const [isHidden, setIsHidden] = useState(false);
   const isImg = isImageFile(fileType, fileUrl);
   const displayName = fileName || fileUrl.split("/").pop() || "Attachment";
 
   if (isImg) {
+    if (isHidden) {
+      return (
+        <div className="mt-1.5 flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setIsHidden(false)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/90 border border-slate-700 hover:bg-slate-700/80 text-slate-300 text-[11px] transition-colors shadow-sm"
+          >
+            <Eye className="w-3 h-3 text-blue-400" />
+            <span>Show Image ({displayName})</span>
+          </button>
+        </div>
+      );
+    }
+
     return (
-      <div className="mt-2">
+      <div className="mt-2 relative group">
         <a
           href={fileUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block group relative overflow-hidden rounded-lg border border-slate-700/60 max-w-[200px] sm:max-w-sm"
+          className="block relative overflow-hidden rounded-lg border border-slate-700/60 max-w-[200px] sm:max-w-sm"
         >
           <img
             src={fileUrl}
@@ -136,6 +155,14 @@ function AttachmentDisplay({
             </span>
           </div>
         </a>
+        <button
+          type="button"
+          onClick={() => setIsHidden(true)}
+          className="absolute top-1 right-1 p-1.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-slate-400 hover:text-white transition-colors backdrop-blur-sm shadow-md"
+          title="Hide image preview"
+        >
+          <EyeOff className="w-3.5 h-3.5" />
+        </button>
       </div>
     );
   }
@@ -245,6 +272,8 @@ export function ChatInterface({
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [isDraftVisible, setIsDraftVisible] = useState(true);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const isScrolledUpRef = useRef(false);
   const liveEndRef = useRef<HTMLDivElement>(null);
@@ -575,32 +604,54 @@ export function ChatInterface({
 
   return (
     <>
-      <div className="bg-slate-800/50 px-4 py-2 flex items-center justify-between text-sm border-b border-slate-700/50">
-        <div className="flex items-center space-x-2">
-          <UserCircle className="w-5 h-5 text-slate-400" />
-          <span className="text-slate-300 font-medium">
-            Identity: {currentUser === "USER_A" ? "User A" : "User B"}
-          </span>
-        </div>
-        <div className="flex items-center space-x-3">
+      {isHeaderVisible ? (
+        <div className="bg-slate-800/50 px-3 sm:px-4 py-2 flex items-center justify-between text-xs sm:text-sm border-b border-slate-700/50">
           <div className="flex items-center space-x-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${otherUserOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
-            <span className="text-slate-400">{otherUserOnline ? 'Partner Online' : 'Partner Offline'}</span>
+            <UserCircle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+            <span className="text-slate-300 font-medium">
+              Identity: {currentUser === "USER_A" ? "User A" : "User B"}
+            </span>
           </div>
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <div className="flex items-center space-x-1.5">
+              <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${otherUserOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
+              <span className="text-slate-400 text-xs">{otherUserOnline ? 'Online' : 'Offline'}</span>
+            </div>
+            <button
+              onClick={async () => {
+                await fetch("/api/auth", { method: "DELETE" });
+                router.push("/");
+                router.refresh();
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-[11px] sm:text-xs font-semibold transition-colors"
+              title="End session and return to gallery"
+            >
+              <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              End Session
+            </button>
+            <button
+              onClick={() => setIsHeaderVisible(false)}
+              className="p-1 text-slate-400 hover:text-white transition-colors rounded hover:bg-slate-700/50 ml-1"
+              title="Hide header"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/90 px-3 py-1 flex items-center justify-between border-b border-slate-800 text-xs">
+          <span className="text-slate-400 text-[10px]">
+            {currentUser === "USER_A" ? "User A" : "User B"} • {otherUserOnline ? "Partner Online" : "Partner Offline"}
+          </span>
           <button
-            onClick={async () => {
-              await fetch("/api/auth", { method: "DELETE" });
-              router.push("/");
-              router.refresh();
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-semibold transition-colors"
-            title="End session and return to gallery"
+            onClick={() => setIsHeaderVisible(true)}
+            className="text-slate-400 hover:text-slate-200 text-[10px] flex items-center gap-1 py-0.5 px-2 rounded bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60"
+            title="Show info header"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            End Session
+            <ChevronDown className="w-3 h-3" /> Show Info Bar
           </button>
         </div>
-      </div>
+      )}
 
       <div className="flex border-b border-slate-700/50">
         <button
@@ -891,44 +942,52 @@ export function ChatInterface({
           )}
 
           {(delayedInput.trim().length > 0 || delayedFile) && (
-            <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-slate-900/95 border-t border-amber-500/30 flex flex-col gap-2">
+            <div className="px-3 py-2 sm:px-4 sm:py-2 bg-slate-900/95 border-t border-amber-500/30 flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
-                <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsDraftVisible((prev) => !prev)}
+                  className="flex items-center gap-1.5 hover:text-amber-300 transition-colors"
+                  title={isDraftVisible ? "Collapse draft preview" : "Expand draft preview"}
+                >
                   <Eye className="w-3.5 h-3.5 text-amber-400" />
                   <span>Inspect Draft Before Sending</span>
-                </div>
+                  {isDraftVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
                 <span className="text-[10px] font-mono text-slate-400">
                   {delayedInput.trim().split(/\s+/).filter(Boolean).length} words • {delayedInput.length} chars
                 </span>
               </div>
-              <div className={`p-3 rounded-xl border-2 border-dashed ${
-                currentUser === "USER_A"
-                  ? 'bg-amber-950/30 border-amber-500/50 text-amber-100'
-                  : 'bg-cyan-950/30 border-cyan-500/50 text-cyan-100'
-              } text-xs max-h-24 sm:max-h-36 overflow-y-auto shadow-inner`}>
-                <div className="flex items-center gap-1.5 mb-1.5 text-[10px]">
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                    currentUser === "USER_A"
-                      ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
-                      : 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40'
-                  }`}>
-                    {currentUser === "USER_A" ? "User A" : "User B"} (Draft)
-                  </span>
-                  <Clock className="w-3 h-3 text-amber-400" />
-                  <span className="text-amber-300 font-medium">5 days left</span>
-                  <span className="text-slate-400 font-mono text-[9px] bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 ml-auto">
-                    100% opacity
-                  </span>
-                </div>
-                {delayedInput && <p className="whitespace-pre-wrap leading-relaxed text-sm">{delayedInput}</p>}
-                {delayedFile && (
-                  <div className="mt-2 flex items-center gap-2 p-2 rounded bg-slate-900/70 border border-slate-700/60 text-slate-300 text-xs">
-                    <Paperclip className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="truncate">{delayedFile.name}</span>
-                    <span className="text-[10px] text-slate-400">({formatFileSize(delayedFile.size)})</span>
+              {isDraftVisible && (
+                <div className={`p-3 rounded-xl border-2 border-dashed ${
+                  currentUser === "USER_A"
+                    ? 'bg-amber-950/30 border-amber-500/50 text-amber-100'
+                    : 'bg-cyan-950/30 border-cyan-500/50 text-cyan-100'
+                } text-xs max-h-24 sm:max-h-36 overflow-y-auto shadow-inner`}>
+                  <div className="flex items-center gap-1.5 mb-1.5 text-[10px]">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                      currentUser === "USER_A"
+                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+                        : 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40'
+                    }`}>
+                      {currentUser === "USER_A" ? "User A" : "User B"} (Draft)
+                    </span>
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    <span className="text-amber-300 font-medium">5 days left</span>
+                    <span className="text-slate-400 font-mono text-[9px] bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 ml-auto">
+                      100% opacity
+                    </span>
                   </div>
-                )}
-              </div>
+                  {delayedInput && <p className="whitespace-pre-wrap leading-relaxed text-sm">{delayedInput}</p>}
+                  {delayedFile && (
+                    <div className="mt-2 flex items-center gap-2 p-2 rounded bg-slate-900/70 border border-slate-700/60 text-slate-300 text-xs">
+                      <Paperclip className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="truncate">{delayedFile.name}</span>
+                      <span className="text-[10px] text-slate-400">({formatFileSize(delayedFile.size)})</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
