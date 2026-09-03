@@ -605,83 +605,119 @@ export function ChatInterface({
   return (
     <>
       {isHeaderVisible ? (
-        <div className="bg-slate-800/50 px-3 sm:px-4 py-2 flex items-center justify-between text-xs sm:text-sm border-b border-slate-700/50">
-          <div className="flex items-center space-x-2">
-            <UserCircle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
-            <span className="text-slate-300 font-medium">
-              Identity: {currentUser === "USER_A" ? "User A" : "User B"}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            <div className="flex items-center space-x-1.5">
-              <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${otherUserOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
-              <span className="text-slate-400 text-xs">{otherUserOnline ? 'Online' : 'Offline'}</span>
+        <>
+          <div className="bg-slate-800/50 px-3 sm:px-4 py-2 flex items-center justify-between text-xs sm:text-sm border-b border-slate-700/50">
+            <div className="flex items-center space-x-2">
+              <UserCircle className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+              <span className="text-slate-300 font-medium">
+                Identity: {currentUser === "USER_A" ? "User A" : "User B"}
+              </span>
             </div>
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="flex items-center space-x-1.5">
+                <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${otherUserOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
+                <span className="text-slate-400 text-xs">{otherUserOnline ? 'Online' : 'Offline'}</span>
+              </div>
+              <button
+                onClick={async () => {
+                  await fetch("/api/auth", { method: "DELETE" });
+                  router.push("/");
+                  router.refresh();
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-[11px] sm:text-xs font-semibold transition-colors"
+                title="End session and return to gallery"
+              >
+                <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                End Session
+              </button>
+              <button
+                onClick={() => setIsHeaderVisible(false)}
+                className="p-1 text-slate-400 hover:text-white transition-colors rounded hover:bg-slate-700/50 ml-1"
+                title="Hide top bar and tabs"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex border-b border-slate-700/50">
             <button
-              onClick={async () => {
-                await fetch("/api/auth", { method: "DELETE" });
-                router.push("/");
-                router.refresh();
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-[11px] sm:text-xs font-semibold transition-colors"
-              title="End session and return to gallery"
+              onClick={() => setActiveTab("live")}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === "live"
+                  ? 'bg-slate-800 text-white border-b-2 border-blue-500'
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
+              }`}
             >
-              <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              End Session
+              <MessageSquare className="w-4 h-4" />
+              Live Chat
             </button>
             <button
-              onClick={() => setIsHeaderVisible(false)}
-              className="p-1 text-slate-400 hover:text-white transition-colors rounded hover:bg-slate-700/50 ml-1"
-              title="Hide header"
+              onClick={() => setActiveTab("delayed")}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === "delayed"
+                  ? 'bg-slate-800 text-white border-b-2 border-amber-500'
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
+              }`}
             >
-              <ChevronUp className="w-4 h-4" />
+              <Clock className="w-4 h-4" />
+              Delayed Messages
+              {delayedMessages.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-600/30 text-amber-400 rounded-full">
+                  {delayedMessages.length}
+                </span>
+              )}
             </button>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="bg-slate-900/90 px-3 py-1 flex items-center justify-between border-b border-slate-800 text-xs">
-          <span className="text-slate-400 text-[10px]">
-            {currentUser === "USER_A" ? "User A" : "User B"} • {otherUserOnline ? "Partner Online" : "Partner Offline"}
-          </span>
+        <div className="bg-slate-900/90 px-3 py-1.5 flex items-center justify-between border-b border-slate-800 text-xs shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${otherUserOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
+              <span className="text-slate-400 text-[11px] font-medium">
+                {currentUser === "USER_A" ? "User A" : "User B"}
+              </span>
+            </div>
+            <span className="text-slate-600">•</span>
+            <div className="flex items-center bg-slate-800/80 rounded-md p-0.5 border border-slate-700/60">
+              <button
+                onClick={() => setActiveTab("live")}
+                className={`px-2 py-0.5 text-[10px] sm:text-[11px] rounded font-medium transition-colors flex items-center gap-1 ${
+                  activeTab === "live" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <MessageSquare className="w-3 h-3" />
+                Live
+              </button>
+              <button
+                onClick={() => setActiveTab("delayed")}
+                className={`px-2 py-0.5 text-[10px] sm:text-[11px] rounded font-medium transition-colors flex items-center gap-1 ${
+                  activeTab === "delayed" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                Delayed
+                {delayedMessages.length > 0 && (
+                  <span className="text-[9px] px-1 bg-black/30 rounded-full">
+                    {delayedMessages.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() => setIsHeaderVisible(true)}
-            className="text-slate-400 hover:text-slate-200 text-[10px] flex items-center gap-1 py-0.5 px-2 rounded bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60"
-            title="Show info header"
+            className="text-slate-400 hover:text-slate-200 text-[11px] flex items-center gap-1 py-1 px-2.5 rounded bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition-colors"
+            title="Show full header and tabs"
           >
-            <ChevronDown className="w-3 h-3" /> Show Info Bar
+            <ChevronDown className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Show Tabs & Status</span>
+            <span className="sm:hidden">Show</span>
           </button>
         </div>
       )}
-
-      <div className="flex border-b border-slate-700/50">
-        <button
-          onClick={() => setActiveTab("live")}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-            activeTab === "live"
-              ? 'bg-slate-800 text-white border-b-2 border-blue-500'
-              : 'bg-slate-900 text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4" />
-          Live Chat
-        </button>
-        <button
-          onClick={() => setActiveTab("delayed")}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-            activeTab === "delayed"
-              ? 'bg-slate-800 text-white border-b-2 border-amber-500'
-              : 'bg-slate-900 text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          Delayed Messages
-          {delayedMessages.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-600/30 text-amber-400 rounded-full">
-              {delayedMessages.length}
-            </span>
-          )}
-        </button>
-      </div>
 
       {activeTab === "live" ? (
         <>
