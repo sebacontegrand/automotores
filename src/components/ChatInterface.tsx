@@ -272,7 +272,7 @@ export function ChatInterface({
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
-  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(false);
   const [isDraftVisible, setIsDraftVisible] = useState(true);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const isScrolledUpRef = useRef(false);
