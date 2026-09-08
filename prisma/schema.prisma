@@ -22,22 +22,26 @@ enum Sender {
 }
 
 model Message {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   sender    Sender
   content   String
   fileUrl   String?
   fileName  String?
   fileType  String?
-  createdAt DateTime @default(now())
+  seen      Boolean   @default(false)
+  seenAt    DateTime?
+  createdAt DateTime  @default(now())
 }
 
 model DelayedMessage {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   sender    Sender
   content   String
   fileUrl   String?
   fileName  String?
   fileType  String?
-  createdAt DateTime @default(now())
+  seen      Boolean   @default(false)
+  seenAt    DateTime?
+  createdAt DateTime  @default(now())
   expiresAt DateTime
 }

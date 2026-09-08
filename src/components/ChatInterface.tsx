@@ -200,6 +200,8 @@ export type Message = {
   fileUrl?: string | null;
   fileName?: string | null;
   fileType?: string | null;
+  seen?: boolean;
+  seenAt?: Date | string | null;
   createdAt: Date | string;
 };
 
@@ -210,6 +212,8 @@ export type DelayedMessage = {
   fileUrl?: string | null;
   fileName?: string | null;
   fileType?: string | null;
+  seen?: boolean;
+  seenAt?: Date | string | null;
   createdAt: Date | string;
   expiresAt: Date | string;
 };
@@ -273,11 +277,35 @@ export function ChatInterface({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [isHeaderVisible, setIsHeaderVisible] = useState(false);
-  const [isDraftVisible, setIsDraftVisible] = useState(true);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const isScrolledUpRef = useRef(false);
   const liveEndRef = useRef<HTMLDivElement>(null);
   const delayedEndRef = useRef<HTMLDivElement>(null);
+  const seenMarkedIdsRef = useRef<Set<string>>(new Set());
+
+  // Mark delayed messages from partner as seen when on the delayed tab
+  useEffect(() => {
+    if (activeTab !== "delayed") return;
+
+    const unseenPartnerMessages = delayedMessages.filter(
+      (m) => m.sender !== currentUser && !m.seen && !seenMarkedIdsRef.current.has(m.id)
+    );
+
+    if (unseenPartnerMessages.length === 0) return;
+
+    const ids = unseenPartnerMessages.map((m) => m.id);
+    ids.forEach((id) => seenMarkedIdsRef.current.add(id));
+
+    setDelayedMessages((prev) =>
+      prev.map((m) => (ids.includes(m.id) ? { ...m, seen: true, seenAt: new Date() } : m))
+    );
+
+    fetch("/api/delayed-messages/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch((err) => console.error("Failed to mark messages as seen", err));
+  }, [activeTab, delayedMessages, currentUser]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -358,6 +386,10 @@ export function ChatInterface({
       }
     });
 
+    privateChannel.bind("delete-message", (data: { id: string }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== data.id));
+    });
+
     privateChannel.bind("new-delayed-message", (message: DelayedMessage) => {
       setDelayedMessages((prev) => {
         if (prev.some((m) => m.id === message.id)) return prev;
@@ -376,6 +408,14 @@ export function ChatInterface({
 
     privateChannel.bind("delete-delayed-message", (data: { id: string }) => {
       setDelayedMessages((prev) => prev.filter((m) => m.id !== data.id));
+    });
+
+    privateChannel.bind("delayed-messages-seen", (data: { ids: string[] }) => {
+      if (!Array.isArray(data.ids)) return;
+      data.ids.forEach((id) => seenMarkedIdsRef.current.add(id));
+      setDelayedMessages((prev) =>
+        prev.map((m) => (data.ids.includes(m.id) ? { ...m, seen: true, seenAt: new Date() } : m))
+      );
     });
 
     privateChannel.bind("typing-status", (data: { sender: string; isTyping: boolean }) => {
@@ -602,6 +642,21 @@ export function ChatInterface({
     }
   };
 
+  const deleteLiveMessage = async (id: string) => {
+    try {
+      const res = await fetch("/api/messages", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to delete live message", err);
+    }
+  };
+
   return (
     <>
       {isHeaderVisible ? (
@@ -726,20 +781,31 @@ export function ChatInterface({
               const isMe = msg.sender === currentUser;
               return (
                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                  <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative group/bubble ${
                     isMe 
                       ? 'bg-blue-600 text-white rounded-br-sm' 
                       : 'bg-slate-700 text-slate-100 rounded-bl-sm'
                   }`}>
-                    {msg.content && <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}
-                    {msg.fileUrl && (
-                      <AttachmentDisplay
-                        fileUrl={msg.fileUrl}
-                        fileName={msg.fileName}
-                        fileType={msg.fileType}
-                        isMe={isMe}
-                      />
-                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        {msg.content && <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}
+                        {msg.fileUrl && (
+                          <AttachmentDisplay
+                            fileUrl={msg.fileUrl}
+                            fileName={msg.fileName}
+                            fileType={msg.fileType}
+                            isMe={isMe}
+                          />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => deleteLiveMessage(msg.id)}
+                        className="opacity-60 sm:opacity-0 sm:group-hover/bubble:opacity-100 p-1 -mr-1 -mt-0.5 rounded hover:bg-black/20 text-slate-300 hover:text-red-300 transition-all shrink-0"
+                        title="Delete message"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <span className={`text-[10px] mt-1 block ${isMe ? 'text-blue-200 text-right' : 'text-slate-400'}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -849,10 +915,10 @@ export function ChatInterface({
               delayedMessages.map((msg) => {
                 const isMe = msg.sender === currentUser;
                 const isUserA = msg.sender === "USER_A";
+                const isSeen = Boolean(msg.seen);
                 const rawOpacity = getDelayedOpacity(msg);
                 // Ensure text stays readable down to 0.18 opacity before expiration
                 const visualOpacity = rawOpacity === 0 ? 0 : Math.max(0.18, rawOpacity);
-                const opacityPercent = Math.round(rawOpacity * 100);
                 const remainingLabel = getRemainingTimeLabel(msg);
                 const isEditing = editingId === msg.id;
 
@@ -865,10 +931,12 @@ export function ChatInterface({
                     className={`flex ${sideClass}`}
                     style={{ opacity: visualOpacity, transition: "opacity 1s ease-out" }}
                   >
-                    <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                    <div className={`max-w-[88%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 border-2 ${
+                      isSeen ? 'border-solid' : 'border-dotted'
+                    } ${
                       isUserA
-                        ? 'border-2 border-dashed border-amber-500/50 bg-amber-950/30 text-amber-100 rounded-bl-sm shadow-md'
-                        : 'border-2 border-dashed border-cyan-500/50 bg-cyan-950/30 text-cyan-100 rounded-br-sm shadow-md'
+                        ? 'border-amber-500/60 bg-amber-950/30 text-amber-100 rounded-bl-sm shadow-md'
+                        : 'border-cyan-500/60 bg-cyan-950/30 text-cyan-100 rounded-br-sm shadow-md'
                     }`}>
                       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
@@ -884,18 +952,33 @@ export function ChatInterface({
                             {remainingLabel}
                           </span>
                         </div>
-                        <span className="text-[9px] text-slate-400 font-mono bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700/60 ml-auto sm:ml-0">
-                          {opacityPercent}% opacity
-                        </span>
-                        {isMe && !isEditing && (
+                        {isSeen ? (
+                          <span
+                            className="text-[9px] text-emerald-400 font-medium bg-emerald-950/60 border border-emerald-500/40 px-1.5 py-0.5 rounded flex items-center gap-1"
+                            title="Seen by partner"
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                            Seen
+                          </span>
+                        ) : (
+                          <span
+                            className="text-[9px] text-slate-400 font-medium bg-slate-900/60 border border-slate-700/50 px-1.5 py-0.5 rounded"
+                            title="Not yet seen by partner"
+                          >
+                            Unseen
+                          </span>
+                        )}
+                        {!isEditing && (
                           <div className="ml-auto flex items-center gap-1">
-                            <button
-                              onClick={() => startEdit(msg)}
-                              className="p-1 rounded hover:bg-slate-700/50 transition-colors"
-                              title="Edit message"
-                            >
-                              <Pencil className="w-3 h-3 text-slate-400 hover:text-white" />
-                            </button>
+                            {isMe && (
+                              <button
+                                onClick={() => startEdit(msg)}
+                                className="p-1 rounded hover:bg-slate-700/50 transition-colors"
+                                title="Edit message"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-400 hover:text-white" />
+                              </button>
+                            )}
                             <button
                               onClick={() => deleteMessage(msg.id)}
                               className="p-1 rounded hover:bg-red-900/50 transition-colors"
@@ -974,56 +1057,6 @@ export function ChatInterface({
                 <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce"></span>
               </div>
               <span className="font-medium text-slate-300">Partner is typing...</span>
-            </div>
-          )}
-
-          {(delayedInput.trim().length > 0 || delayedFile) && (
-            <div className="px-3 py-2 sm:px-4 sm:py-2 bg-slate-900/95 border-t border-amber-500/30 flex flex-col gap-2">
-              <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
-                <button
-                  type="button"
-                  onClick={() => setIsDraftVisible((prev) => !prev)}
-                  className="flex items-center gap-1.5 hover:text-amber-300 transition-colors"
-                  title={isDraftVisible ? "Collapse draft preview" : "Expand draft preview"}
-                >
-                  <Eye className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Inspect Draft Before Sending</span>
-                  {isDraftVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-                <span className="text-[10px] font-mono text-slate-400">
-                  {delayedInput.trim().split(/\s+/).filter(Boolean).length} words • {delayedInput.length} chars
-                </span>
-              </div>
-              {isDraftVisible && (
-                <div className={`p-3 rounded-xl border-2 border-dashed ${
-                  currentUser === "USER_A"
-                    ? 'bg-amber-950/30 border-amber-500/50 text-amber-100'
-                    : 'bg-cyan-950/30 border-cyan-500/50 text-cyan-100'
-                } text-xs max-h-24 sm:max-h-36 overflow-y-auto shadow-inner`}>
-                  <div className="flex items-center gap-1.5 mb-1.5 text-[10px]">
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                      currentUser === "USER_A"
-                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
-                        : 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40'
-                    }`}>
-                      {currentUser === "USER_A" ? "User A" : "User B"} (Draft)
-                    </span>
-                    <Clock className="w-3 h-3 text-amber-400" />
-                    <span className="text-amber-300 font-medium">5 days left</span>
-                    <span className="text-slate-400 font-mono text-[9px] bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 ml-auto">
-                      100% opacity
-                    </span>
-                  </div>
-                  {delayedInput && <p className="whitespace-pre-wrap leading-relaxed text-sm">{delayedInput}</p>}
-                  {delayedFile && (
-                    <div className="mt-2 flex items-center gap-2 p-2 rounded bg-slate-900/70 border border-slate-700/60 text-slate-300 text-xs">
-                      <Paperclip className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="truncate">{delayedFile.name}</span>
-                      <span className="text-[10px] text-slate-400">({formatFileSize(delayedFile.size)})</span>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 

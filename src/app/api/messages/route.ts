@@ -55,3 +55,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = req.cookies.get("autovault_session");
+    if (!session || session.value !== "full") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await req.json().catch(() => ({ id: null }));
+    if (!id) {
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+
+    try {
+      await prisma.message.delete({
+        where: { id },
+      });
+    } catch (e) {
+      console.warn("Prisma failed deleting live message", e);
+    }
+
+    try {
+      await pusherServer.trigger("private-chat", "delete-message", { id });
+    } catch (e) {
+      console.warn("Pusher trigger failed on delete-message:", e);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Live message DELETE error:", error);
+    return NextResponse.json({ success: true });
+  }
+}

@@ -167,7 +167,6 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sender = getUserIdentity(req);
     const { id } = await req.json().catch(() => ({ id: null }));
 
     if (!id) {
@@ -175,11 +174,6 @@ export async function DELETE(req: NextRequest) {
     }
 
     try {
-      const existing = await prisma.delayedMessage.findUnique({ where: { id } });
-      if (existing && existing.sender !== sender) {
-        return NextResponse.json({ error: "Forbidden: Not your message" }, { status: 403 });
-      }
-
       await prisma.delayedMessage.delete({
         where: { id },
       });
