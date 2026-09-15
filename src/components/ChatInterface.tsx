@@ -278,10 +278,29 @@ async function uploadFile(file: File): Promise<{ url: string; name: string; type
       method: "POST",
       body: formData,
     });
-    if (!res.ok) return null;
-    return await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url) return data;
+    }
   } catch (err) {
-    console.error("Upload error:", err);
+    console.warn("Server upload failed, falling back to client data URL:", err);
+  }
+
+  // Client-side fallback: convert to base64 Data URL (e.g. for Vercel read-only filesystem)
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    return {
+      url: dataUrl,
+      name: file.name,
+      type: file.type || "audio/webm",
+    };
+  } catch (fallbackErr) {
+    console.error("Client fallback Data URL error:", fallbackErr);
     return null;
   }
 }
@@ -320,6 +339,7 @@ export function ChatInterface({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   const startDelayedRecording = async () => {
     try {
@@ -344,17 +364,17 @@ export function ChatInterface({
       const options = mimeType ? { mimeType } : undefined;
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
-      const chunks: BlobPart[] = [];
+      chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          chunks.push(event.data);
+          chunksRef.current.push(event.data);
         }
       };
 
       mediaRecorder.onstop = () => {
         const audioType = mediaRecorder.mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type: audioType });
+        const blob = new Blob(chunksRef.current, { type: audioType });
         setDelayedAudioBlob(blob);
         const url = URL.createObjectURL(blob);
         setDelayedAudioUrl(url);
@@ -402,6 +422,7 @@ export function ChatInterface({
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
+    chunksRef.current = [];
     setIsRecordingDelayed(false);
     setRecordingDuration(0);
   };
@@ -410,9 +431,104 @@ export function ChatInterface({
     if (delayedAudioUrl) {
       URL.revokeObjectURL(delayedAudioUrl);
     }
+    chunksRef.current = [];
     setDelayedAudioBlob(null);
     setDelayedAudioUrl(null);
     setRecordingDuration(0);
+  };
+
+  const sendRecordedDelayedAudio = async (blobToSend?: Blob | null) => {
+    let finalBlob = blobToSend || delayedAudioBlob;
+
+    if (!finalBlob && mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      const recorder = mediaRecorderRef.current;
+      const audioType = recorder.mimeType || "audio/webm";
+
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+        recorder.stop();
+      });
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      setIsRecordingDelayed(false);
+      finalBlob = new Blob(chunksRef.current, { type: audioType });
+    }
+
+    if (!finalBlob || finalBlob.size === 0) return;
+
+    const ext = finalBlob.type.includes("mp4") ? "mp4" : "webm";
+    const file = new File([finalBlob], `voice-note-${Date.now()}.${ext}`, {
+      type: finalBlob.type || "audio/webm",
+    });
+
+    const content = delayedInput.trim();
+    setDelayedInput("");
+    discardDelayedAudio();
+
+    setIsUploadingDelayed(true);
+    const uploaded = await uploadFile(file);
+    setIsUploadingDelayed(false);
+
+    if (!uploaded) {
+      console.error("Failed to upload audio");
+      return;
+    }
+
+    const tempId = `temp-delayed-${Date.now()}`;
+    const optimisticMessage: DelayedMessage = {
+      id: tempId,
+      sender: currentUser,
+      content,
+      fileUrl: uploaded.url,
+      fileName: uploaded.name,
+      fileType: uploaded.type,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + FIVE_DAYS_MS),
+    };
+
+    setDelayedMessages((prev) => [...prev, optimisticMessage]);
+    scrollToBottom("smooth");
+
+    try {
+      const res = await fetch("/api/delayed-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: currentUser,
+          content,
+          fileUrl: uploaded.url,
+          fileName: uploaded.name,
+          fileType: uploaded.type,
+        }),
+      });
+
+      if (res.ok) {
+        const serverMsg = await res.json();
+        setDelayedMessages((prev) => {
+          if (prev.some((m) => m.id === serverMsg.id)) {
+            return prev.filter((m) => m.id !== tempId);
+          }
+          return prev.map((m) =>
+            m.id === tempId
+              ? {
+                  ...serverMsg,
+                  createdAt: new Date(serverMsg.createdAt),
+                  expiresAt: new Date(serverMsg.expiresAt),
+                }
+              : m
+          );
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send delayed voice message:", err);
+    }
   };
 
   useEffect(() => {
@@ -1255,25 +1371,37 @@ export function ChatInterface({
           )}
 
           {delayedAudioUrl && (
-            <div className="px-4 py-2.5 bg-slate-900/95 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300 gap-3">
+            <div className="px-4 py-2.5 bg-slate-900/95 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300 gap-3 flex-wrap sm:flex-nowrap">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 animate-pulse" />
                 <span className="font-semibold text-amber-300 shrink-0">Voice Note</span>
-                <audio controls src={delayedAudioUrl} className="h-7 w-full max-w-[260px] sm:max-w-xs accent-amber-500" />
+                <audio controls src={delayedAudioUrl} className="h-7 w-full max-w-[220px] sm:max-w-xs accent-amber-500" />
               </div>
-              <button
-                type="button"
-                onClick={discardDelayedAudio}
-                className="p-1 text-slate-400 hover:text-red-400 transition-colors shrink-0"
-                title="Discard voice note"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={discardDelayedAudio}
+                  className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded hover:bg-slate-800"
+                  title="Discard voice note"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => sendRecordedDelayedAudio(delayedAudioBlob)}
+                  disabled={isUploadingDelayed}
+                  className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 text-xs py-1 px-3 rounded-lg font-semibold shadow"
+                >
+                  {isUploadingDelayed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Send Voice Note</span>
+                </Button>
+              </div>
             </div>
           )}
 
           {isRecordingDelayed ? (
-            <div className="p-3 sm:p-4 bg-slate-800 border-t border-amber-500/40 flex items-center justify-between gap-3">
+            <div className="p-3 sm:p-4 bg-slate-800 border-t border-amber-500/40 flex items-center justify-between gap-2.5 flex-wrap sm:flex-nowrap">
               <div className="flex items-center gap-2.5">
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1290,24 +1418,38 @@ export function ChatInterface({
                   {(recordingDuration % 60).toString().padStart(2, "0")}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-auto sm:ml-0">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={cancelDelayedRecording}
                   className="text-slate-400 hover:text-red-400 hover:bg-red-950/40 gap-1 text-xs"
+                  title="Cancel and discard"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Cancel</span>
                 </Button>
                 <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={stopDelayedRecording}
-                  className="bg-red-600 hover:bg-red-700 text-white gap-1.5 text-xs py-1.5 px-3 rounded-lg font-medium shadow"
+                  className="border-slate-600 bg-slate-700/80 hover:bg-slate-700 text-slate-200 gap-1.5 text-xs py-1.5 px-3 rounded-lg font-medium shadow-sm"
+                  title="Review recording before sending"
                 >
                   <Square className="w-3 h-3 fill-current" />
-                  <span>Done</span>
+                  <span>Review</span>
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => sendRecordedDelayedAudio()}
+                  disabled={isUploadingDelayed}
+                  className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 text-xs py-1.5 px-3.5 rounded-lg font-semibold shadow"
+                  title="Send voice note now"
+                >
+                  {isUploadingDelayed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Send</span>
                 </Button>
               </div>
             </div>

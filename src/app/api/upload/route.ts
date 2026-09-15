@@ -20,24 +20,38 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    await fs.mkdir(uploadsDir, { recursive: true });
+    try {
+      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      await fs.mkdir(uploadsDir, { recursive: true });
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const uniquePrefix = crypto.randomUUID ? crypto.randomUUID().substring(0, 8) : Date.now().toString();
-    const fileName = `${Date.now()}-${uniquePrefix}-${safeName}`;
-    const filePath = path.join(uploadsDir, fileName);
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const uniquePrefix = crypto.randomUUID ? crypto.randomUUID().substring(0, 8) : Date.now().toString();
+      const fileName = `${Date.now()}-${uniquePrefix}-${safeName}`;
+      const filePath = path.join(uploadsDir, fileName);
 
-    await fs.writeFile(filePath, buffer);
+      await fs.writeFile(filePath, buffer);
 
-    const url = `/uploads/${fileName}`;
+      const url = `/uploads/${fileName}`;
 
-    return NextResponse.json({
-      url,
-      name: file.name,
-      type: file.type,
-      size: file.size,
-    });
+      return NextResponse.json({
+        url,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+    } catch (fsError) {
+      console.warn("Filesystem upload write failed (serverless environment), returning data URL:", fsError);
+      const mime = file.type || "application/octet-stream";
+      const base64 = buffer.toString("base64");
+      const url = `data:${mime};base64,${base64}`;
+
+      return NextResponse.json({
+        url,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+    }
   } catch (error) {
     console.error("File upload error:", error);
     return NextResponse.json({ error: "Failed to upload file" }, { status: 500 });
