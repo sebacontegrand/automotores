@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { CarCard, Car } from "@/components/CarCard";
 import { PasswordModal } from "@/components/PasswordModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -61,7 +62,13 @@ export function CarGallery() {
           </DialogHeader>
           <div className="aspect-video relative rounded-md overflow-hidden bg-slate-800 mt-4">
             {selectedCar?.imageUrl && (
-              <img src={selectedCar.imageUrl} alt="Car" className="w-full h-full object-cover" />
+              <Image
+                src={selectedCar.imageUrl}
+                alt={`${selectedCar.make} ${selectedCar.model}`}
+                fill
+                sizes="(max-width: 640px) 100vw, 500px"
+                className="object-cover"
+              />
             )}
           </div>
           <div className="mt-4 text-slate-300">

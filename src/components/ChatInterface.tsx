@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { pusherClient } from "@/lib/pusher-client";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,9 @@ import {
   Loader2,
   ChevronUp,
   ChevronDown,
+  Mic,
+  Square,
+  Volume2,
 } from "lucide-react";
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -105,6 +109,17 @@ function isImageFile(fileType?: string | null, fileUrl?: string | null): boolean
   return false;
 }
 
+function isAudioFile(fileType?: string | null, fileUrl?: string | null): boolean {
+  if (fileType?.startsWith("audio/")) return true;
+  if (fileUrl) {
+    const ext = fileUrl.split(".").pop()?.toLowerCase();
+    if (ext && ["webm", "mp3", "wav", "ogg", "m4a", "aac", "oga"].includes(ext)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function AttachmentDisplay({
   fileUrl,
   fileName,
@@ -118,6 +133,7 @@ function AttachmentDisplay({
 }) {
   const [isHidden, setIsHidden] = useState(false);
   const isImg = isImageFile(fileType, fileUrl);
+  const isAudio = isAudioFile(fileType, fileUrl);
   const displayName = fileName || fileUrl.split("/").pop() || "Attachment";
 
   if (isImg) {
@@ -144,9 +160,12 @@ function AttachmentDisplay({
           rel="noopener noreferrer"
           className="block relative overflow-hidden rounded-lg border border-slate-700/60 max-w-[200px] sm:max-w-sm"
         >
-          <img
+          <Image
             src={fileUrl}
             alt={displayName}
+            width={384}
+            height={224}
+            unoptimized
             className="max-h-36 sm:max-h-56 w-auto object-cover rounded-lg group-hover:scale-105 transition-transform duration-200"
           />
           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -163,6 +182,37 @@ function AttachmentDisplay({
         >
           <EyeOff className="w-3.5 h-3.5" />
         </button>
+      </div>
+    );
+  }
+
+  if (isAudio) {
+    return (
+      <div className="mt-2">
+        <div className="p-2.5 rounded-xl border border-slate-700/70 bg-slate-900/85 shadow-sm flex flex-col gap-1.5 max-w-[280px] sm:max-w-xs">
+          <div className="flex items-center justify-between gap-2 px-0.5 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="truncate">{displayName}</span>
+            </span>
+            <a
+              href={fileUrl}
+              download={displayName}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors shrink-0 p-0.5"
+              title="Download audio"
+            >
+              <Download className="w-3 h-3" />
+            </a>
+          </div>
+          <audio
+            controls
+            preload="metadata"
+            src={fileUrl}
+            className="w-full h-8 accent-amber-500 rounded"
+          />
+        </div>
       </div>
     );
   }
@@ -262,6 +312,120 @@ export function ChatInterface({
   const [delayedFile, setDelayedFile] = useState<File | null>(null);
   const [isUploadingDelayed, setIsUploadingDelayed] = useState(false);
   const delayedFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isRecordingDelayed, setIsRecordingDelayed] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [delayedAudioBlob, setDelayedAudioBlob] = useState<Blob | null>(null);
+  const [delayedAudioUrl, setDelayedAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startDelayedRecording = async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
+        alert("Audio recording is not supported in this browser.");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      let mimeType = "";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
+      }
+
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: BlobPart[] = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioType = mediaRecorder.mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: audioType });
+        setDelayedAudioBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setDelayedAudioUrl(url);
+      };
+
+      mediaRecorder.start(250);
+      setIsRecordingDelayed(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to start audio recording:", err);
+      alert("Microphone access was denied or is unavailable.");
+    }
+  };
+
+  const stopDelayedRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setIsRecordingDelayed(false);
+  };
+
+  const cancelDelayedRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setIsRecordingDelayed(false);
+    setRecordingDuration(0);
+  };
+
+  const discardDelayedAudio = () => {
+    if (delayedAudioUrl) {
+      URL.revokeObjectURL(delayedAudioUrl);
+    }
+    setDelayedAudioBlob(null);
+    setDelayedAudioUrl(null);
+    setRecordingDuration(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (delayedAudioUrl) {
+        URL.revokeObjectURL(delayedAudioUrl);
+      }
+    };
+  }, [delayedAudioUrl]);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -452,6 +616,7 @@ export function ChatInterface({
 
   useEffect(() => {
     scrollToBottom("auto");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const sendLiveMessage = async (e: React.FormEvent) => {
@@ -522,14 +687,22 @@ export function ChatInterface({
 
   const sendDelayedMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!delayedInput.trim() && !delayedFile) || isUploadingDelayed || !currentUser) return;
+    if ((!delayedInput.trim() && !delayedFile && !delayedAudioBlob) || isUploadingDelayed || !currentUser) return;
 
     sendTypingSignal(false);
     const content = delayedInput;
-    const attachedFile = delayedFile;
+    let attachedFile = delayedFile;
+
+    if (!attachedFile && delayedAudioBlob) {
+      const ext = delayedAudioBlob.type.includes("mp4") ? "mp4" : "webm";
+      attachedFile = new File([delayedAudioBlob], `voice-note-${Date.now()}.${ext}`, {
+        type: delayedAudioBlob.type || "audio/webm",
+      });
+    }
 
     setDelayedInput("");
     setDelayedFile(null);
+    discardDelayedAudio();
     if (delayedFileInputRef.current) delayedFileInputRef.current.value = "";
 
     let uploaded: { url: string; name: string; type: string } | null = null;
@@ -1081,60 +1254,131 @@ export function ChatInterface({
             </div>
           )}
 
-          <form onSubmit={sendDelayedMessage} className="p-3 sm:p-4 bg-slate-800 border-t border-slate-700 flex flex-col sm:flex-row gap-2.5">
-            <input
-              type="file"
-              ref={delayedFileInputRef}
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setDelayedFile(e.target.files[0]);
-                }
-              }}
-              className="hidden"
-            />
-            <Textarea 
-              value={delayedInput}
-              onChange={(e) => {
-                setDelayedInput(e.target.value);
-                if (e.target.value.trim().length > 0) {
-                  sendTypingSignal(true);
-                } else {
-                  sendTypingSignal(false);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (delayedInput.trim() || delayedFile) {
-                    sendDelayedMessage(e);
-                  }
-                }
-              }}
-              placeholder="Leave a message that fades over 5 days... (Shift+Enter for new line)" 
-              rows={2}
-              className="flex-1 bg-slate-900 border-slate-700 text-white text-sm min-h-[50px] sm:min-h-[80px] max-h-[120px] sm:max-h-[180px] focus:ring-amber-500/50"
-            />
-            <div className="flex gap-2 items-center self-end sm:self-auto">
-              <Button
+          {delayedAudioUrl && (
+            <div className="px-4 py-2.5 bg-slate-900/95 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300 gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 animate-pulse" />
+                <span className="font-semibold text-amber-300 shrink-0">Voice Note</span>
+                <audio controls src={delayedAudioUrl} className="h-7 w-full max-w-[260px] sm:max-w-xs accent-amber-500" />
+              </div>
+              <button
                 type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => delayedFileInputRef.current?.click()}
-                className="text-slate-400 hover:text-white hover:bg-slate-700/60 shrink-0"
-                title="Attach file"
+                onClick={discardDelayedAudio}
+                className="p-1 text-slate-400 hover:text-red-400 transition-colors shrink-0"
+                title="Discard voice note"
               >
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              <Button
-                type="submit"
-                disabled={(!delayedInput.trim() && !delayedFile) || isUploadingDelayed}
-                className="bg-amber-600 hover:bg-amber-700 text-white gap-2 py-2.5 px-4 rounded-lg font-medium"
-              >
-                {isUploadingDelayed ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                <span className="text-xs sm:hidden">Send Message</span>
-              </Button>
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </form>
+          )}
+
+          {isRecordingDelayed ? (
+            <div className="p-3 sm:p-4 bg-slate-800 border-t border-amber-500/40 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+                <span className="text-xs sm:text-sm font-semibold text-red-400 tracking-wider">
+                  RECORDING
+                </span>
+                <span className="text-xs font-mono text-slate-200 bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
+                  {Math.floor(recordingDuration / 60)
+                    .toString()
+                    .padStart(2, "0")}
+                  :
+                  {(recordingDuration % 60).toString().padStart(2, "0")}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelDelayedRecording}
+                  className="text-slate-400 hover:text-red-400 hover:bg-red-950/40 gap-1 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Cancel</span>
+                </Button>
+                <Button
+                  type="button"
+                  onClick={stopDelayedRecording}
+                  className="bg-red-600 hover:bg-red-700 text-white gap-1.5 text-xs py-1.5 px-3 rounded-lg font-medium shadow"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                  <span>Done</span>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={sendDelayedMessage} className="p-3 sm:p-4 bg-slate-800 border-t border-slate-700 flex flex-col sm:flex-row gap-2.5">
+              <input
+                type="file"
+                ref={delayedFileInputRef}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setDelayedFile(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+              <Textarea 
+                value={delayedInput}
+                onChange={(e) => {
+                  setDelayedInput(e.target.value);
+                  if (e.target.value.trim().length > 0) {
+                    sendTypingSignal(true);
+                  } else {
+                    sendTypingSignal(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (delayedInput.trim() || delayedFile || delayedAudioBlob) {
+                      sendDelayedMessage(e);
+                    }
+                  }
+                }}
+                placeholder={delayedAudioBlob ? "Add an optional note to this voice recording..." : "Leave a message that fades over 5 days... (Shift+Enter for new line)"} 
+                rows={2}
+                className="flex-1 bg-slate-900 border-slate-700 text-white text-sm min-h-[50px] sm:min-h-[80px] max-h-[120px] sm:max-h-[180px] focus:ring-amber-500/50"
+              />
+              <div className="flex gap-2 items-center self-end sm:self-auto">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={startDelayedRecording}
+                  disabled={isUploadingDelayed || !!delayedAudioBlob || !!delayedFile}
+                  className="text-slate-400 hover:text-amber-400 hover:bg-slate-700/60 shrink-0"
+                  title="Record voice note"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => delayedFileInputRef.current?.click()}
+                  disabled={isUploadingDelayed || !!delayedAudioBlob}
+                  className="text-slate-400 hover:text-white hover:bg-slate-700/60 shrink-0"
+                  title="Attach file"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={(!delayedInput.trim() && !delayedFile && !delayedAudioBlob) || isUploadingDelayed}
+                  className="bg-amber-600 hover:bg-amber-700 text-white gap-2 py-2.5 px-4 rounded-lg font-medium"
+                >
+                  {isUploadingDelayed ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <span className="text-xs sm:hidden">Send Message</span>
+                </Button>
+              </div>
+            </form>
+          )}
         </>
       )}
     </>

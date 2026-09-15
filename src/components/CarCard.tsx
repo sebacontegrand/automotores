@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -28,11 +29,13 @@ export function CarCard({ car, onClick }: CarCardProps) {
       onClick={onClick}
     >
       <Card className="h-full flex flex-col bg-slate-900 border-slate-800 overflow-hidden">
-        <div className="h-48 w-full bg-slate-800 overflow-hidden">
-          <img
+        <div className="h-48 w-full bg-slate-800 overflow-hidden relative">
+          <Image
             src={car.imageUrl}
             alt={`${car.make} ${car.model}`}
-            className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-opacity"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover opacity-80 hover:opacity-100 transition-opacity"
           />
         </div>
         <CardHeader>
